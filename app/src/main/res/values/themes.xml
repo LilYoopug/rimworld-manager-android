@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Material 3 with dynamic color on Android 12+, day/night aware. -->
+    <style name="Theme.RimManager" parent="Theme.Material3.DynamicColors.DayNight.NoActionBar" />
+</resources>
