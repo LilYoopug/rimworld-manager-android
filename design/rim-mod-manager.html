@@ -1,0 +1,1415 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>Rim Mod Manager</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600&family=Barlow+Condensed:wght@600&family=IBM+Plex+Mono:wght@400&display=swap">
+<style>
+/* Palette 60/30/10: deep green-black base, raised surfaces, one teal accent, amber for warnings.
+   Type: Barlow Condensed for titles, Barlow for UI text, IBM Plex Mono for IDs, paths and versions. */
+:root {
+  --bg: #EEF3F1;
+  --surface: #FFFFFF;
+  --fg: #0E1513;
+  --muted: rgba(14, 21, 19, 0.7);
+  --accent: #1E7F78;
+  --accent-soft: rgba(30, 127, 120, 0.08);
+  --warn: #8A4F00;
+  --warn-soft: rgba(138, 79, 0, 0.08);
+  --line: rgba(14, 21, 19, 0.12);
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0E1513;
+    --surface: #18221F;
+    --fg: #E6EFEC;
+    --muted: rgba(230, 239, 236, 0.7);
+    --accent: #7FD4CB;
+    --accent-soft: rgba(127, 212, 203, 0.08);
+    --warn: #F2B25C;
+    --warn-soft: rgba(242, 178, 92, 0.1);
+    --line: rgba(230, 239, 236, 0.12);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0E1513;
+  --surface: #18221F;
+  --fg: #E6EFEC;
+  --muted: rgba(230, 239, 236, 0.7);
+  --accent: #7FD4CB;
+  --accent-soft: rgba(127, 212, 203, 0.08);
+  --warn: #F2B25C;
+  --warn-soft: rgba(242, 178, 92, 0.1);
+  --line: rgba(230, 239, 236, 0.12);
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 400 14px/1.5 Barlow, system-ui, sans-serif;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 16px;
+}
+
+.app { max-width: 400px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+.screen { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+[hidden] { display: none !important; }
+
+h1 { font: 600 28px/1.1 "Barlow Condensed", Barlow, sans-serif; margin: 0; }
+h2 { font: 600 18px/1.2 "Barlow Condensed", Barlow, sans-serif; margin: 0; overflow-wrap: anywhere; }
+.eyebrow { font: 600 12px/1.2 Barlow, sans-serif; color: var(--muted); letter-spacing: 0.04em; text-transform: uppercase; }
+.muted { color: var(--muted); }
+.mono { font: 400 12px/1.4 "IBM Plex Mono", monospace; color: var(--muted); overflow-wrap: anywhere; }
+.header { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; }
+
+.pill { font: 600 12px/1 Barlow, sans-serif; padding: 6px 10px; border-radius: 999px; border: 1px solid var(--line); white-space: nowrap; }
+.pill.on { background: var(--accent); color: var(--bg); border-color: transparent; }
+.pill.off { color: var(--muted); }
+.pill.warn { color: var(--warn); border-color: var(--warn); background: var(--warn-soft); }
+
+.toolbar { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.check { display: inline-flex; align-items: center; gap: 8px; font: 600 14px Barlow, sans-serif; cursor: pointer; padding: 6px 0; }
+.check input { width: 20px; height: 20px; margin: 0; accent-color: var(--accent); cursor: pointer; }
+.check:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+
+.search { display: flex; gap: 8px; align-items: center; }
+.search input, .field input, .namebox input { flex: 1; min-width: 0; font: 400 14px Barlow, sans-serif; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); color: var(--fg); }
+.search input:focus-visible, .field input:focus-visible, .namebox input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.text-btn { background: none; border: 0; color: var(--accent); font: 600 14px/1 Barlow, sans-serif; padding: 10px 4px; cursor: pointer; white-space: nowrap; }
+.text-btn:focus-visible, .btn:focus-visible, .seg button:focus-visible, .tabs button:focus-visible, .row:focus-visible, .frow:focus-visible, .opt:focus-visible, .crumbs button:focus-visible, .chip:focus-visible, .switch:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.seg { display: flex; gap: 4px; background: var(--surface); border: 1px solid var(--line); padding: 4px; border-radius: 14px; }
+.seg button { flex: 1; border: 0; background: none; color: var(--muted); padding: 10px 4px; border-radius: 10px; font: 600 13px Barlow, sans-serif; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--bg); }
+
+.notice { font-size: 13px; background: var(--warn-soft); border: 1px solid var(--warn); color: var(--fg); border-radius: 12px; padding: 12px 14px; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.notice .text-btn { color: var(--warn); }
+
+.section-title { display: flex; justify-content: space-between; align-items: center; font: 600 12px Barlow, sans-serif; color: var(--muted); letter-spacing: 0.04em; text-transform: uppercase; }
+
+.selbar { display: flex; justify-content: space-between; align-items: center; gap: 8px; background: var(--accent-soft); border: 1px solid var(--accent); border-radius: 16px; padding: 8px 8px 8px 14px; }
+.selbar .count { font-weight: 600; }
+.selbar .acts { display: flex; gap: 4px; }
+
+.rows { display: flex; flex-direction: column; gap: 6px; }
+.row, .frow { display: flex; gap: 12px; align-items: center; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; min-width: 0; cursor: pointer; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.row.selected { border-color: var(--accent); background: var(--accent-soft); }
+.row.has-warn { border-color: var(--warn); }
+.row .pos { font: 400 12px "IBM Plex Mono", monospace; color: var(--muted); width: 22px; flex: none; text-align: right; }
+.row .body, .frow .body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.row .name { font: 600 15px/1.25 Barlow, sans-serif; overflow-wrap: anywhere; }
+.row .warn-line { font-size: 12px; font-weight: 600; color: var(--warn); }
+.row .dlc { font: 600 11px/1 Barlow, sans-serif; color: var(--accent); }
+.row.off { opacity: 0.92; }
+.row .pillrow { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+.handle { color: var(--muted); font-size: 18px; flex: none; }
+
+.box { width: 22px; height: 22px; border-radius: 7px; border: 2px solid var(--muted); display: grid; place-items: center; flex: none; font: 700 13px/1 Barlow, sans-serif; color: transparent; }
+.box.on { background: var(--accent); border-color: var(--accent); color: var(--bg); }
+.ic { width: 36px; height: 36px; border-radius: 10px; background: var(--accent-soft); color: var(--accent); display: grid; place-items: center; font: 600 11px "IBM Plex Mono", monospace; flex: none; }
+.frow .chev { color: var(--muted); font-size: 18px; }
+.frow .fname { font-weight: 600; overflow-wrap: anywhere; }
+.frow.cut { opacity: 0.5; }
+
+.note { font-size: 12px; color: var(--muted); }
+.statusline { font-size: 12px; color: var(--muted); display: flex; gap: 8px; align-items: center; min-height: 18px; }
+.statusline::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); flex: none; }
+
+.crumbs { display: flex; flex-wrap: wrap; gap: 2px; align-items: center; font: 400 12px/1.4 "IBM Plex Mono", monospace; color: var(--muted); }
+.crumbs button { background: none; border: 0; padding: 4px 2px; color: var(--accent); font: inherit; cursor: pointer; border-radius: 6px; }
+.shortcut { display: flex; gap: 8px; flex-wrap: wrap; }
+.chip { border: 1px solid var(--line); background: var(--surface); color: var(--fg); font: 600 12px Barlow, sans-serif; padding: 8px 12px; border-radius: 999px; cursor: pointer; }
+.chip.ok { border-color: var(--accent); color: var(--accent); }
+.chip.bad { border-color: var(--warn); color: var(--warn); background: var(--warn-soft); }
+
+.bar { margin-top: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 24px; padding: 8px; display: flex; gap: 8px; }
+.btn { flex: 1; min-width: 0; font: 600 14px/1 Barlow, sans-serif; padding: 14px 4px; border-radius: 16px; border: 1px solid var(--line); background: transparent; color: var(--fg); cursor: pointer; }
+.btn.primary { background: var(--accent); color: var(--bg); border-color: transparent; }
+.btn.danger { color: var(--warn); }
+.btn:disabled { opacity: 0.45; cursor: default; }
+
+.tabs { display: flex; gap: 4px; background: var(--surface); border: 1px solid var(--line); padding: 4px; border-radius: 16px; }
+.tabs button { flex: 1; border: 0; background: none; color: var(--muted); padding: 10px 4px; border-radius: 12px; font: 600 13px Barlow, sans-serif; cursor: pointer; }
+.tabs button[aria-selected="true"] { background: var(--accent); color: var(--bg); }
+
+.group { display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; }
+.setting { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 16px; border-top: 1px solid var(--line); min-width: 0; }
+.setting:first-child { border-top: 0; }
+.setting .label { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.field { display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; border-top: 1px solid var(--line); }
+.field:first-child { border-top: 0; }
+.field .row-inline { display: flex; gap: 8px; align-items: center; }
+.field input { max-width: 120px; }
+.switch { width: 44px; height: 26px; border-radius: 999px; background: var(--line); position: relative; border: 0; cursor: pointer; flex: none; }
+.switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: var(--surface); transition: transform 150ms; }
+.switch[aria-checked="true"] { background: var(--accent); }
+.switch[aria-checked="true"]::after { transform: translateX(18px); background: var(--bg); }
+
+.editor { width: 100%; min-height: 300px; box-sizing: border-box; background: var(--surface); color: var(--fg); border: 1px solid var(--line); border-radius: 14px; padding: 14px; font: 400 12px/1.6 "IBM Plex Mono", monospace; resize: vertical; }
+.editor:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.scrim { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.45); }
+.sheet { position: fixed; left: 0; right: 0; bottom: 0; max-width: 400px; margin: 0 auto; background: var(--surface); border-top: 1px solid var(--line); border-radius: 24px 24px 0 0; padding: 16px 16px max(16px, env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; gap: 12px; max-height: 88vh; overflow-y: auto; }
+.sheet .grid { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; font-size: 13px; margin: 0; }
+.sheet .grid dt { color: var(--muted); }
+.sheet .grid dd { margin: 0; overflow-wrap: anywhere; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.dep { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 12px; background: var(--bg); min-width: 0; }
+.dep .dn { font-weight: 600; overflow-wrap: anywhere; }
+.sheet .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.sheet .actions .btn { flex: 1 1 45%; }
+.sheet h3 { font: 600 12px Barlow, sans-serif; color: var(--muted); letter-spacing: 0.04em; text-transform: uppercase; margin: 4px 0 0; }
+.preview { aspect-ratio: 16 / 9; width: 100%; border-radius: 14px; background: linear-gradient(135deg, var(--accent-soft), var(--line)); border: 1px solid var(--line); display: grid; place-items: center; text-align: center; }
+.preview span { font: 400 12px "IBM Plex Mono", monospace; color: var(--muted); padding: 8px; }
+.desc { margin: 0; font-size: 13px; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.opt { display: flex; flex-direction: column; gap: 2px; text-align: left; background: none; border: 0; color: var(--fg); font: 600 15px Barlow, sans-serif; padding: 14px 8px; border-radius: 12px; cursor: pointer; }
+.opt .sub { font: 400 12px/1.4 Barlow, sans-serif; color: var(--muted); }
+.opt.danger { color: var(--warn); }
+.opt:hover { background: var(--accent-soft); }
+.sheet .sep { height: 1px; background: var(--line); margin: 2px 0; }
+.namebox { display: flex; gap: 8px; }
+
+.brand { display: flex; align-items: center; gap: 10px; }
+.logo { width: 32px; height: 32px; flex: none; }
+.toast { position: fixed; left: 16px; right: 16px; bottom: 16px; max-width: 368px; margin: 0 auto; background: var(--fg); color: var(--bg); border-radius: 14px; padding: 12px 16px; font-size: 13px; }
+
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<main class="app">
+
+  <nav class="tabs" role="tablist" aria-label="Sections">
+    <button type="button" role="tab" data-tab="mods" aria-selected="true">Mods</button>
+    <button type="button" role="tab" data-tab="files" aria-selected="false">Files</button>
+    <button type="button" role="tab" data-tab="saves" aria-selected="false">Saves</button>
+    <button type="button" role="tab" data-tab="settings" aria-selected="false">Settings</button>
+  </nav>
+
+  <!-- MODS -->
+  <section id="tab-mods" class="screen">
+    <header class="header">
+      <div>
+        <div class="eyebrow">ModsConfig.xml · RimWorld <span class="verLabel">1.7</span></div>
+        <div class="brand"><svg class="logo" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="9" fill="#1E7F78"/><circle cx="16" cy="16" r="10" fill="none" stroke="#fff" stroke-width="2.4"/><path d="M11 13h10M11 16h10M11 19h6" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/></svg><h1>Mods</h1></div>
+      </div>
+      <span class="pill on" id="count">1 active</span>
+    </header>
+
+    <div class="toolbar"><span class="mono" id="modStamp"></span><button class="text-btn" type="button" data-refresh="mods">Refresh</button></div>
+
+    <div class="notice" id="issues" hidden>
+      <span id="issueText"></span>
+      <button class="text-btn" type="button" id="issueGo">Show</button>
+    </div>
+
+    <div class="search">
+      <input type="search" id="q" placeholder="Search mods" aria-label="Search mods">
+      <button class="text-btn" type="button" id="autosort">Auto-sort</button>
+    </div>
+
+    <div class="toolbar">
+      <label class="check"><input type="checkbox" id="mMulti"> Multi-select mode</label>
+      <span class="mono">Or hold a mod</span>
+    </div>
+
+    <div class="seg" role="group" aria-label="Mod lists">
+      <button type="button" id="segEnabled" aria-pressed="true">Enabled</button>
+      <button type="button" id="segDisabled" aria-pressed="false">Disabled</button>
+    </div>
+
+    <div class="selbar" id="modSelbar" hidden>
+      <span class="count" id="modSelCount">0 selected</span>
+      <span class="acts">
+        <button class="text-btn" type="button" id="modSelAll">Select all</button>
+        <button class="text-btn" type="button" id="modDone">Done</button>
+      </span>
+    </div>
+
+    <div class="section-title"><span id="listTitle">Enabled load order</span><span class="mono" id="listCount"></span></div>
+    <div class="rows" id="rows"></div>
+
+    <p class="note" id="modHint">Tap a mod for details. Tick Multi-select mode or hold a mod to select several. Warnings show when a dependency is off or missing, or the mod isn't listed for your RimWorld version.</p>
+    <div class="statusline" id="status">No pending changes</div>
+
+    <div class="bar" id="modBarNormal">
+      <button class="btn" type="button" id="getMods">Import</button>
+      <button class="btn primary" type="button" id="apply">Save and apply</button>
+    </div>
+    <div class="bar" id="modBarMulti" hidden>
+      <button class="btn" type="button" id="mEnable" disabled>Enable</button>
+      <button class="btn" type="button" id="mDisable" disabled>Disable</button>
+      <button class="btn danger" type="button" id="mDelete" disabled>Delete</button>
+      <button class="btn" type="button" id="mExport" disabled>Export</button>
+    </div>
+  </section>
+
+  <!-- FILES -->
+  <section id="tab-files" class="screen" hidden>
+    <header class="header">
+      <div>
+        <div class="eyebrow">RimWorld app data</div>
+        <h1>Files</h1>
+      </div>
+    </header>
+
+    <div class="toolbar"><span class="mono">Checked when you open this tab</span><button class="text-btn" type="button" data-refresh="files">Refresh</button></div>
+
+    <div class="shortcut">
+      <button class="chip" type="button" data-jump="mods">Mods folder</button>
+      <button class="chip" type="button" data-jump="config">ModsConfig.xml</button>
+    </div>
+
+    <div class="crumbs" id="crumbs"></div>
+
+    <div class="rows" id="fileList"></div>
+    <p class="note" id="fileHint">Tap a folder to open it, or a file to edit it. Hold a file for actions: export, rename, copy, cut, delete.</p>
+
+    <div class="bar" id="fileBarNormal">
+      <button class="btn" type="button" id="fImport">Import</button>
+      <button class="btn" type="button" id="fNew">New folder</button>
+    </div>
+    <div class="bar" id="fileBarPaste" hidden>
+      <button class="btn" type="button" id="pCancel">Cancel</button>
+      <button class="btn primary" type="button" id="pPaste">Paste here</button>
+    </div>
+  </section>
+
+  <!-- SAVES -->
+  <section id="tab-saves" class="screen" hidden>
+    <header class="header">
+      <div>
+        <div class="eyebrow">save/Saves · <span class="verLabel">1.7</span></div>
+        <h1>Saves</h1>
+      </div>
+      <span class="pill off" id="saveCount">6 saves</span>
+    </header>
+
+    <div class="toolbar"><span class="mono" id="saveStamp"></span><span><button class="text-btn" type="button" id="sImportTop">Import</button><button class="text-btn" type="button" data-refresh="saves">Refresh</button></span></div>
+
+    <div class="selbar" id="saveSelbar" hidden>
+      <span class="count" id="saveSelCount">0 selected</span>
+      <span class="acts">
+        <button class="text-btn" type="button" id="saveDeselect">Clear</button>
+      </span>
+    </div>
+
+    <div class="section-title"><span>Newest game time first</span><span class="mono">.rws</span></div>
+    <div class="rows" id="saveRows"></div>
+    <p class="note" id="saveHint">Tap a save to select it, then use the buttons below. Date and play time are read from the save file. The real save date isn't stored in the file.</p>
+
+    <div class="bar">
+      <button class="btn" type="button" id="sRename" disabled>Rename</button>
+      <button class="btn" type="button" id="sDupe" disabled>Duplicate</button>
+      <button class="btn" type="button" id="sExport" disabled>Export</button>
+      <button class="btn danger" type="button" id="sDelete" disabled>Delete</button>
+    </div>
+  </section>
+
+  <!-- FILE EDITOR -->
+  <section id="tab-editor" class="screen" hidden>
+    <div class="header">
+      <button class="text-btn" type="button" id="backFiles">Back</button>
+      <span class="mono" id="editorPath"></span>
+    </div>
+    <div class="statusline">Valid XML · backup saved as .bak before each save</div>
+    <textarea class="editor" id="editorText" spellcheck="false" aria-label="File contents"></textarea>
+    <div class="bar">
+      <button class="btn" type="button" id="cancelEdit">Cancel</button>
+      <button class="btn primary" type="button" id="saveEdit">Save</button>
+    </div>
+  </section>
+
+  <!-- SETTINGS -->
+  <section id="tab-settings" class="screen" hidden>
+    <header class="header">
+      <div>
+        <div class="eyebrow">Preferences</div>
+        <h1>Settings</h1>
+      </div>
+    </header>
+
+    <div class="toolbar"><span class="mono">Changes save as you make them</span><button class="text-btn" type="button" data-refresh="settings">Refresh</button></div>
+
+    <div class="group">
+      <div class="field">
+        <div class="label"><span style="font-weight:600">RimWorld version</span><span class="mono">Used to check each mod's supported versions</span></div>
+        <div class="row-inline">
+          <input type="text" id="gameVer" value="1.7" inputmode="decimal" aria-label="RimWorld version" maxlength="8">
+          <button class="text-btn" type="button" id="detectVer">Detect from Version.txt</button>
+        </div>
+        <span class="mono" id="verNote">Enter major.minor, like 1.7. Full build: 1.7.4990 rev1069</span>
+      </div>
+    </div>
+
+    <div class="group">
+      <div class="setting">
+        <div class="label"><span>Game data</span><span class="mono">com.ports1de.waylith / files</span></div>
+        <span class="pill on">Found</span>
+      </div>
+      <div class="setting">
+        <div class="label"><span>Shizuku</span><span class="mono">Connected · API 13.6</span></div>
+        <span class="pill on">On</span>
+      </div>
+    </div>
+
+    <div class="group">
+      <div class="setting">
+        <div class="label"><span>Hold to multi-select</span><span class="mono">Hold a mod to start selecting several</span></div>
+        <button class="switch" type="button" role="switch" aria-checked="true" aria-label="Hold to multi-select" id="holdSwitch"></button>
+      </div>
+      <div class="setting">
+        <div class="label"><span>Warn about missing dependencies</span><span class="mono">In the Enabled list and before saving</span></div>
+        <button class="switch" type="button" role="switch" aria-checked="true" aria-label="Warn about missing dependencies"></button>
+      </div>
+      <div class="setting">
+        <div class="label"><span>Warn about unsupported versions</span><span class="mono">Compares each mod and save with your RimWorld version</span></div>
+        <button class="switch" type="button" role="switch" aria-checked="true" aria-label="Warn about unsupported versions"></button>
+      </div>
+      <div class="setting">
+        <div class="label"><span>Back up before saving</span><span class="mono">Keeps the previous file as .bak</span></div>
+        <button class="switch" type="button" role="switch" aria-checked="true" aria-label="Back up before saving"></button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Mod details -->
+  <div id="modSheetWrap" data-overlay hidden>
+    <div class="scrim" data-close></div>
+    <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="mName">
+      <div class="preview"><span>About/preview.png</span></div>
+      <h2 id="mName"></h2>
+      <dl class="grid">
+        <dt>Author</dt><dd id="mAuthor"></dd>
+        <dt>Package ID</dt><dd class="mono" id="mPid"></dd>
+        <dt>Mod version</dt><dd class="mono" id="mModVer"></dd>
+      </dl>
+      <h3>Game versions</h3>
+      <div class="chips" id="mVers"></div>
+      <h3>Dependencies</h3>
+      <div id="mDeps" style="display:flex;flex-direction:column;gap:6px"></div>
+      <h3>Load after</h3>
+      <div id="mAfter" class="chips"></div>
+      <p class="desc" id="mDesc"></p>
+      <div class="actions">
+        <button class="btn" type="button" id="mToggle"></button>
+        <button class="btn" type="button" id="mUp">Move up</button>
+        <button class="btn" type="button" id="mDown">Move down</button>
+        <button class="btn" type="button" id="mAdv">Advanced</button>
+      </div>
+      <button class="opt" type="button" data-close>Close</button>
+    </div>
+  </div>
+
+  <!-- Import: system file manager. Options depend on where the import starts. -->
+  <div id="importWrap" data-overlay hidden>
+    <div class="scrim" data-close></div>
+    <div class="sheet" role="dialog" aria-modal="true" aria-label="Import">
+      <h2 id="impTitle">Import</h2>
+      <p class="note" id="impNote" style="margin:0"></p>
+      <button class="opt" type="button" id="pickZip">
+        Zip file
+        <span class="sub">Pick a mod .zip. It is extracted into the Mods folder as a folder.</span>
+      </button>
+      <button class="opt" type="button" id="pickFolder">
+        Folder
+        <span class="sub">Pick a mod folder. It is copied into the Mods folder.</span>
+      </button>
+      <button class="opt" type="button" id="pickFile" hidden>
+        File
+        <span class="sub" id="pickFileSub">Pick a file. It is copied into the folder you have open.</span>
+      </button>
+      <button class="opt" type="button" id="pickSave" hidden>
+        Save file (.rws)
+        <span class="sub">Pick a RimWorld save. It is copied into save/Saves.</span>
+      </button>
+      <div class="sep"></div>
+      <button class="opt" type="button" data-close>Cancel</button>
+    </div>
+  </div>
+
+  <!-- File action menu (hold a file) -->
+  <div id="fileMenuWrap" data-overlay hidden>
+    <div class="scrim" data-close></div>
+    <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="fmName">
+      <div>
+        <div class="eyebrow" id="fmKind">File</div>
+        <h2 id="fmName"></h2>
+      </div>
+      <div class="sep"></div>
+      <button class="opt" type="button" id="fmOpen">Open</button>
+      <button class="opt" type="button" id="fmEdit">Edit</button>
+      <button class="opt" type="button" id="fmRename">Rename</button>
+      <button class="opt" type="button" id="fmCopy">Copy</button>
+      <button class="opt" type="button" id="fmCut">Cut</button>
+      <button class="opt" type="button" id="fmExport">Export</button>
+      <div class="sep"></div>
+      <button class="opt danger" type="button" id="fmDelete">Delete</button>
+      <button class="opt" type="button" data-close>Cancel</button>
+    </div>
+  </div>
+
+  <!-- Rename / new folder -->
+  <div id="nameWrap" data-overlay hidden>
+    <div class="scrim" data-close></div>
+    <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="nTitle">
+      <h2 id="nTitle"></h2>
+      <div class="namebox">
+        <input type="text" id="nInput" aria-label="Name" maxlength="120">
+      </div>
+      <div class="actions">
+        <button class="btn" type="button" data-close>Cancel</button>
+        <button class="btn primary" type="button" id="nSave">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Duplicate save: popup with a prefilled name -->
+  <div id="dupeWrap" data-overlay hidden>
+    <div class="scrim" data-close></div>
+    <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="dTitle">
+      <h2 id="dTitle">Duplicate save</h2>
+      <p class="note" style="margin:0">Creates a copy of the save file with a new name.</p>
+      <div class="namebox">
+        <input type="text" id="dInput" aria-label="New save name" maxlength="120">
+      </div>
+      <div class="actions">
+        <button class="btn" type="button" data-close>Cancel</button>
+        <button class="btn primary" type="button" id="dSave">Duplicate</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Confirm -->
+  <div id="confirmWrap" data-overlay hidden>
+    <div class="scrim" data-close></div>
+    <div class="sheet" role="dialog" aria-modal="true">
+      <h2 id="cTitle"></h2>
+      <p class="muted" id="cMsg" style="margin:0;font-size:13px"></p>
+      <div class="actions">
+        <button class="btn" type="button" data-close>Cancel</button>
+        <button class="btn danger" type="button" id="cYes">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" hidden></div>
+</main>
+
+<script>
+(function () {
+  // Sample data. Mod entries come from the two zips' About.xml files and the installed Apex mod.
+  // Save entries come from the six .rws files (game 1.6.4633 rev1246, scenario "The Mechanitor").
+  var gameVer = "1.7";
+  var longPressOn = true;
+
+  var mods = [
+    { id: "bio", name: "Biotech", pid: "Ludeon.RimWorld.Biotech", author: "Ludeon Studios", modVer: "DLC", on: true, dlc: true,
+      supported: ["1.7"], deps: [], after: [], desc: "Official expansion." },
+    { id: "vre", name: "Vanilla Races Expanded - Android", pid: "vanillaracesexpanded.android", author: "Oskar Potocki, Taranchuk, ISOREX, Sarg Bjornson", modVer: "1.1.0", on: true,
+      supported: ["1.5", "1.6", "1.7"],
+      deps: [
+        { pid: "brrainz.harmony", name: "Harmony" },
+        { pid: "OskarPotocki.VanillaFactionsExpanded.Core", name: "Vanilla Expanded Framework" },
+        { pid: "Ludeon.RimWorld.Biotech", name: "Biotech" }
+      ],
+      after: [],
+      desc: "Adds Android colonists built with the Biotech DLC: synthetic bodies, neutroamine, subroutines and a new starting scenario." },
+    { id: "apex", name: "Apex Mechanoids", pid: "Mortis.ApexMechanoids", author: "Mortis and contributors", modVer: "installed", on: false,
+      supported: ["1.6", "1.7"],
+      deps: [
+        { pid: "brrainz.harmony", name: "Harmony" },
+        { pid: "Ludeon.RimWorld.Biotech", name: "Biotech" },
+        { pid: "OskarPotocki.VanillaFactionsExpanded.Core", name: "Vanilla Expanded Framework" }
+      ],
+      after: ["CETeam.CombatExtended"],
+      desc: "Adds new mechanoid threats, weapons and bosses." },
+    { id: "pua", name: "Pick Up And Haul", pid: "Mehni.PickUpAndHaul", author: "Mehni", modVer: "1.1.2", on: false,
+      supported: ["1.0", "1.1", "1.2", "1.3", "1.4", "1.5", "1.6"],
+      deps: [{ pid: "brrainz.harmony", name: "Harmony" }],
+      after: ["brrainz.harmony"],
+      desc: "Colonists gather items into their inventory, then haul them all to a stockpile. Safe to add to existing games." }
+  ];
+
+  // Saves: values read from each .rws file. ticks = ticksGame, play = realPlayTimeInteracting (seconds).
+  var saves = [
+    { id: "s1", name: "New_Arrivals1", ticks: 58863,  play: 1113.47, ver: "1.6.4633 rev1246", scenario: "The Mechanitor", mods: 6 },
+    { id: "s2", name: "Autosave-1",    ticks: 780000, play: 8185.27, ver: "1.6.4633 rev1246", scenario: "The Mechanitor", mods: 6 },
+    { id: "s3", name: "Autosave-2",    ticks: 840000, play: 8878.64, ver: "1.6.4633 rev1246", scenario: "The Mechanitor", mods: 6 },
+    { id: "s4", name: "Autosave-3",    ticks: 900000, play: 9197.00, ver: "1.6.4633 rev1246", scenario: "The Mechanitor", mods: 6 },
+    { id: "s5", name: "Autosave-4",    ticks: 960000, play: 9538.43, ver: "1.6.4633 rev1246", scenario: "The Mechanitor", mods: 6 },
+    { id: "s6", name: "Autosave-5",    ticks: 720000, play: 7220.43, ver: "1.6.4633 rev1246", scenario: "The Mechanitor", mods: 6 }
+  ];
+  var saveSel = {};
+  var saveSeq = 6;
+
+  // ---------- helpers ----------
+  var toastEl = document.getElementById("toast");
+  var toastT = null;
+  function toast(msg) {
+    toastEl.textContent = msg;
+    toastEl.hidden = false;
+    clearTimeout(toastT);
+    toastT = setTimeout(function () { toastEl.hidden = true; }, 2600);
+  }
+  function setVerLabels() {
+    document.querySelectorAll(".verLabel").forEach(function (el) { el.textContent = gameVer; });
+  }
+  function byPid(pid) {
+    var p = pid.toLowerCase();
+    for (var i = 0; i < mods.length; i++) if (mods[i].pid.toLowerCase() === p) return mods[i];
+    return null;
+  }
+  function depState(pid) {
+    var m = byPid(pid);
+    if (!m) return "missing";
+    return m.on || m.dlc ? "ok" : "off";
+  }
+  function supportsGame(m) { return m.supported.indexOf(gameVer) !== -1; }
+  function enabledList() { return mods.filter(function (m) { return m.on; }); }
+  function disabledList() { return mods.filter(function (m) { return !m.on; }); }
+
+  function issuesFor(m) {
+    var out = [];
+    if (!supportsGame(m)) out.push("Not listed for RimWorld " + gameVer);
+    if (m.on) {
+      m.deps.forEach(function (d) {
+        var s = depState(d.pid);
+        if (s === "missing") out.push("Needs " + d.name + " (not installed)");
+        else if (s === "off") out.push("Needs " + d.name + " (turn it on first)");
+      });
+      m.after.forEach(function (pid) {
+        var dep = byPid(pid);
+        if (!dep || !dep.on) return;
+        if (enabledList().indexOf(dep) > enabledList().indexOf(m)) out.push("Load after " + dep.name);
+      });
+    }
+    return out;
+  }
+
+  // Long press helper: when the hold setting is on, a hold runs onLong; a short tap runs onTap.
+  function attachPress(el, onLong, onTap) {
+    var t = null;
+    var fired = false;
+    el.addEventListener("pointerdown", function () {
+      fired = false;
+      if (!longPressOn) return;
+      t = setTimeout(function () { fired = true; onLong(); }, 500);
+    });
+    ["pointerup", "pointerleave", "pointercancel"].forEach(function (ev) {
+      el.addEventListener(ev, function () { clearTimeout(t); });
+    });
+    el.addEventListener("click", function () {
+      if (fired) { fired = false; return; }
+      onTap();
+    });
+  }
+
+  // ---------- Mods ----------
+  var view = "enabled";
+  var query = "";
+  var multi = false;
+  var selMods = {};
+
+  function visibleMods() {
+    var list = view === "enabled" ? enabledList() : disabledList();
+    if (!query) return list;
+    var q = query.toLowerCase();
+    return list.filter(function (m) { return m.name.toLowerCase().indexOf(q) !== -1 || m.pid.toLowerCase().indexOf(q) !== -1; });
+  }
+  function selectedIds() { return Object.keys(selMods).filter(function (k) { return selMods[k]; }); }
+
+  function renderIssueBanner() {
+    var n = enabledList().reduce(function (sum, m) { return sum + issuesFor(m).length; }, 0);
+    document.getElementById("issues").hidden = n === 0;
+    document.getElementById("issueText").textContent = n + " warning" + (n === 1 ? "" : "s") + " in enabled mods";
+  }
+
+  function renderMods() {
+    setVerLabels();
+    renderIssueBanner();
+    document.getElementById("mMulti").checked = multi;
+
+    var rows = document.getElementById("rows");
+    rows.innerHTML = "";
+    var list = visibleMods();
+    var isEnabled = view === "enabled";
+    document.getElementById("listTitle").textContent = isEnabled ? "Enabled load order" : "Disabled";
+    document.getElementById("listCount").textContent = list.length + " shown";
+    document.getElementById("count").textContent = enabledList().length + " active";
+    document.getElementById("segEnabled").setAttribute("aria-pressed", String(isEnabled));
+    document.getElementById("segDisabled").setAttribute("aria-pressed", String(!isEnabled));
+
+    document.getElementById("modSelbar").hidden = !multi;
+    document.getElementById("modBarNormal").hidden = multi;
+    document.getElementById("modBarMulti").hidden = !multi;
+    document.getElementById("modHint").hidden = multi;
+    var sel = selectedIds();
+    document.getElementById("modSelCount").textContent = sel.length + " selected";
+    ["mEnable", "mDisable", "mDelete", "mExport"].forEach(function (id) {
+      document.getElementById(id).disabled = sel.length === 0;
+    });
+
+    if (list.length === 0) {
+      var empty = document.createElement("div");
+      empty.className = "row";
+      empty.innerHTML = '<div class="body"><span class="name">' + (query ? "No match" : (isEnabled ? "No mods enabled" : "No disabled mods")) + '</span><span class="note">' + (query ? "Try another search." : "Enable a mod from the Disabled list.") + '</span></div>';
+      rows.appendChild(empty);
+      return;
+    }
+
+    list.forEach(function (m) {
+      var issues = issuesFor(m);
+      var isSel = !!selMods[m.id];
+      var row = document.createElement("div");
+      row.className = "row" + (isSel ? " selected" : "") + (isEnabled ? "" : " off") + (issues.length ? " has-warn" : "");
+      row.tabIndex = 0;
+      row.setAttribute("role", "button");
+
+      if (multi) {
+        var box = document.createElement("span");
+        box.className = "box" + (isSel ? " on" : "");
+        box.textContent = isSel ? "✓" : "";
+        row.appendChild(box);
+      } else if (isEnabled) {
+        var pos = document.createElement("span");
+        pos.className = "pos";
+        pos.textContent = String(enabledList().indexOf(m) + 1);
+        row.appendChild(pos);
+      }
+
+      var body = document.createElement("div");
+      body.className = "body";
+      var name = document.createElement("span");
+      name.className = "name";
+      name.textContent = m.name;
+      body.appendChild(name);
+      var meta = document.createElement("span");
+      meta.className = "mono";
+      meta.textContent = m.pid;
+      body.appendChild(meta);
+      if (m.dlc) {
+        var d = document.createElement("span");
+        d.className = "dlc";
+        d.textContent = "Official DLC";
+        body.appendChild(d);
+      }
+      issues.forEach(function (text) {
+        var w = document.createElement("span");
+        w.className = "warn-line";
+        w.textContent = "⚠ " + text;
+        body.appendChild(w);
+      });
+      row.appendChild(body);
+
+      if (isEnabled && !multi) {
+        var h = document.createElement("span");
+        h.className = "handle";
+        h.setAttribute("aria-hidden", "true");
+        h.textContent = "≡";
+        row.appendChild(h);
+      }
+
+      attachPress(row,
+        function () { multi = true; selMods = {}; selMods[m.id] = true; renderMods(); },
+        function () {
+          if (multi) { selMods[m.id] = !selMods[m.id]; renderMods(); }
+          else openDetails(m);
+        });
+      rows.appendChild(row);
+    });
+  }
+
+  function exitMods() { multi = false; selMods = {}; renderMods(); }
+  document.getElementById("mMulti").addEventListener("change", function (e) {
+    multi = e.target.checked;
+    selMods = {};
+    renderMods();
+  });
+  document.getElementById("modSelAll").addEventListener("click", function () {
+    visibleMods().forEach(function (m) { selMods[m.id] = true; });
+    renderMods();
+  });
+  document.getElementById("modDone").addEventListener("click", exitMods);
+
+  function markPending(msg) {
+    document.getElementById("status").textContent = msg || "Changes pending. Tap Save and apply.";
+  }
+  document.getElementById("mEnable").addEventListener("click", function () {
+    var ids = selectedIds();
+    mods.forEach(function (m) { if (ids.indexOf(m.id) !== -1) m.on = true; });
+    exitMods();
+    markPending(ids.length + " mod(s) enabled. Check the warnings before you save.");
+  });
+  document.getElementById("mDisable").addEventListener("click", function () {
+    var ids = selectedIds();
+    mods.forEach(function (m) { if (ids.indexOf(m.id) !== -1 && !m.dlc) m.on = false; });
+    exitMods();
+    markPending(ids.length + " mod(s) disabled. Changes pending.");
+  });
+  document.getElementById("mExport").addEventListener("click", function () {
+    var n = selectedIds().length;
+    exitMods();
+    toast("Exported " + n + " mod(s) to RimMods/exports");
+  });
+  document.getElementById("mDelete").addEventListener("click", function () {
+    var ids = selectedIds();
+    confirmDialog("Delete " + ids.length + " mod(s)?", "Mod folders are removed from the game's Mods folder. Load order is updated when you save.", "Delete", function () {
+      mods = mods.filter(function (m) { return ids.indexOf(m.id) === -1; });
+      exitMods();
+      markPending("Deleted. Tap Save and apply to update the load order.");
+    });
+  });
+
+  function setView(v) { view = v; renderMods(); }
+  document.getElementById("segEnabled").addEventListener("click", function () { setView("enabled"); });
+  document.getElementById("segDisabled").addEventListener("click", function () { setView("disabled"); });
+  document.getElementById("q").addEventListener("input", function (e) { query = e.target.value.trim(); renderMods(); });
+  document.getElementById("issueGo").addEventListener("click", function () { setView("enabled"); });
+
+  // Auto-sort: DLCs, then Harmony, then the rest.
+  document.getElementById("autosort").addEventListener("click", function () {
+    var on = enabledList();
+    var rank = function (m) {
+      if (m.dlc) return 0;
+      if (m.pid.toLowerCase() === "brrainz.harmony") return 1;
+      return 2;
+    };
+    on.sort(function (a, b) { return rank(a) - rank(b) || a.name.localeCompare(b.name); });
+    mods = on.concat(disabledList());
+    markPending("Auto-sorted. Changes pending. Check the warnings before you save.");
+    renderMods();
+  });
+  document.getElementById("apply").addEventListener("click", function () {
+    var bad = enabledList().reduce(function (s, m) { return s + issuesFor(m).length; }, 0);
+    markPending(bad ? "Saved with " + bad + " warning(s). Restart the game to load changes." : "Saved to ModsConfig.xml with a backup. Restart the game to load changes.");
+    toast("Saved. Backup kept as ModsConfig.xml.bak");
+  });
+  document.getElementById("getMods").addEventListener("click", function () { openImport("mods"); });
+
+  // ---------- Mod details ----------
+  var detail = null;
+  function chip(text, ok) {
+    var c = document.createElement("span");
+    c.className = "chip " + (ok ? "ok" : "bad");
+    c.textContent = text;
+    return c;
+  }
+  function openDetails(m) {
+    detail = m;
+    document.getElementById("mName").textContent = m.name;
+    document.getElementById("mAuthor").textContent = m.author;
+    document.getElementById("mPid").textContent = m.pid;
+    document.getElementById("mModVer").textContent = m.modVer;
+    document.getElementById("mDesc").textContent = m.desc;
+
+    var vers = document.getElementById("mVers");
+    vers.innerHTML = "";
+    m.supported.forEach(function (v) { vers.appendChild(chip(v, v === gameVer)); });
+
+    var deps = document.getElementById("mDeps");
+    deps.innerHTML = "";
+    if (m.deps.length === 0) deps.innerHTML = '<span class="note">No required mods</span>';
+    m.deps.forEach(function (d) {
+      var s = depState(d.pid);
+      var row = document.createElement("div");
+      row.className = "dep";
+      var label = document.createElement("span");
+      label.className = "dn";
+      label.textContent = d.name;
+      var st = document.createElement("span");
+      st.className = "pill " + (s === "ok" ? "on" : "warn");
+      st.textContent = s === "ok" ? "On" : s === "off" ? "Turn on" : "Not installed";
+      row.appendChild(label);
+      row.appendChild(st);
+      deps.appendChild(row);
+    });
+
+    var after = document.getElementById("mAfter");
+    after.innerHTML = "";
+    if (m.after.length === 0) after.innerHTML = '<span class="note">No ordering rules</span>';
+    m.after.forEach(function (pid) {
+      var dep = byPid(pid);
+      after.appendChild(chip(dep ? dep.name : pid, !!(dep && dep.on)));
+    });
+
+    var t = document.getElementById("mToggle");
+    t.textContent = m.on ? "Disable" : "Enable";
+    t.className = "btn" + (m.on ? "" : " primary");
+    t.disabled = !!m.dlc;
+    var idx = enabledList().indexOf(m);
+    document.getElementById("mUp").disabled = !m.on || idx <= 0;
+    document.getElementById("mDown").disabled = !m.on || idx === enabledList().length - 1;
+    openOverlay("modSheetWrap");
+  }
+  document.getElementById("mToggle").addEventListener("click", function () {
+    if (!detail || detail.dlc) return;
+    detail.on = !detail.on;
+    closeOverlays();
+    detail = null;
+    markPending("Changes pending. Check the warnings before you save.");
+    renderMods();
+  });
+  function move(dir) {
+    if (!detail || !detail.on) return;
+    var list = enabledList();
+    var i = list.indexOf(detail);
+    var j = i + dir;
+    if (j < 0 || j >= list.length) return;
+    var tmp = list[i]; list[i] = list[j]; list[j] = tmp;
+    mods = list.concat(disabledList());
+    markPending("Load order changed. Check the warnings before you save.");
+    openDetails(detail);
+    renderMods();
+  }
+  document.getElementById("mUp").addEventListener("click", function () { move(-1); });
+  document.getElementById("mDown").addEventListener("click", function () { move(1); });
+  document.getElementById("mAdv").addEventListener("click", function () { toast("Opens the mod folder in Files"); });
+
+  // ---------- Overlays ----------
+  function openOverlay(id) {
+    closeOverlays();
+    document.getElementById(id).hidden = false;
+  }
+  function closeOverlays() {
+    document.querySelectorAll("[data-overlay]").forEach(function (el) { el.hidden = true; });
+  }
+  document.querySelectorAll("[data-close]").forEach(function (el) {
+    el.addEventListener("click", closeOverlays);
+  });
+  function confirmDialog(title, msg, yesLabel, onYes) {
+    document.getElementById("cTitle").textContent = title;
+    document.getElementById("cMsg").textContent = msg;
+    document.getElementById("cYes").textContent = yesLabel;
+    openOverlay("confirmWrap");
+    document.getElementById("cYes").onclick = function () { closeOverlays(); onYes(); };
+  }
+
+  // ---------- Import ----------
+  // Zip and Folder always go to the Mods folder. A zip is extracted as a folder.
+  // File goes into the folder currently open in Files. Save goes into save/Saves.
+  // Both choices hand off to the Android file manager (Storage Access Framework picker).
+  // In this prototype the pick is simulated.
+  var importCtx = "mods";
+  function openImport(ctx) {
+    importCtx = ctx;
+    var isFiles = ctx === "files";
+    var isSaves = ctx === "saves";
+    document.getElementById("impTitle").textContent = isSaves ? "Import save" : "Import";
+    document.getElementById("impNote").textContent = isSaves
+      ? "Opens your file manager so you can pick a save. It is copied into save/Saves."
+      : "Opens your file manager so you can pick the file yourself.";
+    document.getElementById("pickZip").hidden = isSaves;
+    document.getElementById("pickFolder").hidden = isSaves;
+    document.getElementById("pickFile").hidden = !isFiles;
+    document.getElementById("pickSave").hidden = !isSaves;
+    document.getElementById("pickFileSub").textContent = "Pick a file. It is copied into " + currentNode().name + " (" + pathLabel() + ").";
+    openOverlay("importWrap");
+  }
+  function pathLabel() {
+    return path.map(function (n) { return n.name; }).join("/");
+  }
+  function systemPick(kind) {
+    closeOverlays();
+    var label = kind === "zip" ? "a .zip mod" : kind === "folder" ? "a mod folder" : kind === "file" ? "a file" : "a save (.rws)";
+    toast("File manager opened: pick " + label);
+    setTimeout(function () {
+      var modsFolder = tree.children[0].children[0]; // files/game/Mods
+      if (kind === "zip") {
+        modsFolder.children.push({ name: "2975771801_vanilla_races_expanded__android", folder: true, children: [
+          { name: "About", folder: true, children: [{ name: "About.xml", size: "2.1 KB" }] },
+          { name: "1.7", folder: true, children: [] }
+        ]});
+        toast("Extracted the zip into Mods as a folder. Check it in the Mods tab.");
+      } else if (kind === "folder") {
+        modsFolder.children.push({ name: "Mehni.PickUpAndHaul", folder: true, children: [
+          { name: "About", folder: true, children: [{ name: "About.xml", size: "2.1 KB" }] }
+        ]});
+        toast("Copied the folder into Mods.");
+      } else if (kind === "file") {
+        var target = currentNode();
+        target.children.push({ name: uniqueName(target.children, "imported.xml"), size: "1.2 KB" });
+        toast("Copied the file into " + target.name + ".");
+      } else {
+        saves.push({ id: "s" + (++saveSeq), name: "Imported_save", ticks: 58863, play: 1113.47, ver: "1.6.4633 rev1246", scenario: "The Mechanitor", mods: 6 });
+        toast("Copied the save into save/Saves.");
+        renderSaves();
+      }
+      renderFiles();
+    }, 900);
+  }
+  document.getElementById("pickZip").addEventListener("click", function () { systemPick("zip"); });
+  document.getElementById("pickFolder").addEventListener("click", function () { systemPick("folder"); });
+  document.getElementById("pickFile").addEventListener("click", function () { systemPick("file"); });
+  document.getElementById("pickSave").addEventListener("click", function () { systemPick("save"); });
+
+  // ---------- Settings ----------
+  var verInput = document.getElementById("gameVer");
+  verInput.addEventListener("change", function () {
+    var v = verInput.value.trim();
+    if (!/^\d+\.\d+$/.test(v)) {
+      document.getElementById("verNote").textContent = "Enter major.minor, like 1.7";
+      return;
+    }
+    gameVer = v;
+    document.getElementById("verNote").textContent = "Mod and save warnings now use RimWorld " + gameVer;
+    renderMods();
+    renderSaves();
+  });
+  document.getElementById("detectVer").addEventListener("click", function () {
+    verInput.value = "1.7";
+    gameVer = "1.7";
+    document.getElementById("verNote").textContent = "Read from Version.txt: 1.7.4990 rev1069";
+    renderMods();
+    renderSaves();
+  });
+  var holdSwitch = document.getElementById("holdSwitch");
+  holdSwitch.addEventListener("click", function () {
+    longPressOn = !longPressOn;
+    holdSwitch.setAttribute("aria-checked", String(longPressOn));
+    toast(longPressOn ? "Hold to multi-select is on" : "Hold to multi-select is off. Use the checkbox instead.");
+  });
+  document.querySelectorAll(".switch").forEach(function (sw) {
+    if (sw === holdSwitch) return;
+    sw.addEventListener("click", function () {
+      sw.setAttribute("aria-checked", String(sw.getAttribute("aria-checked") !== "true"));
+    });
+  });
+
+  // ---------- Tabs ----------
+  function showTab(name) {
+    ["mods", "files", "saves", "editor", "settings"].forEach(function (s) {
+      document.getElementById("tab-" + s).hidden = s !== name;
+    });
+    document.querySelectorAll(".tabs button").forEach(function (b) {
+      b.setAttribute("aria-selected", String(b.dataset.tab === name));
+    });
+    refreshTab(name);
+  }
+
+  // Re-reads the tab's data. Runs on every open and from each Refresh button.
+  function refreshTab(name) {
+    if (name === "mods") {
+      renderMods();
+      var notIn = mods.filter(function (m) { return !m.on && !m.dlc; }).length;
+      document.getElementById("modStamp").textContent = "Checked Mods folder · " + mods.length + " mods · " + notIn + " not in load order";
+    } else if (name === "files") {
+      renderFiles();
+    } else if (name === "saves") {
+      renderSaves();
+    }
+  }
+  document.querySelectorAll(".tabs button").forEach(function (b) {
+    b.addEventListener("click", function () { showTab(b.dataset.tab); });
+  });
+
+  // ---------- Files ----------
+  var tree = {
+    name: "files",
+    children: [
+      { name: "game", folder: true, children: [
+        { name: "Mods", folder: true, children: [
+          { name: "Imported_20261101_214834", folder: true, children: [
+            { name: "About", folder: true, children: [{ name: "About.xml", size: "2.1 KB" }] },
+            { name: "LoadFolders.xml", size: "0.4 KB" }
+          ]}
+        ]},
+        { name: "Assembly-CSharp.dll", size: "18.2 MB" },
+        { name: "RimWorld.dll", size: "4.6 MB" }
+      ]},
+      { name: "save", folder: true, children: [
+        { name: "Config", folder: true, children: [
+          { name: "ModsConfig.xml", size: "0.6 KB" },
+          { name: "Prefs.xml", size: "1.2 KB" }
+        ]},
+        { name: "Saves", folder: true, children: [] },
+        { name: "Scenarios", folder: true, children: [] }
+      ]},
+      { name: "startup-report.txt", size: "3.8 KB" }
+    ]
+  };
+  var path = [tree];
+  var clip = null; // { node, mode: "copy" | "cut" }
+
+  function currentNode() { return path[path.length - 1]; }
+  function currentChildren() { return currentNode().children || []; }
+  function cloneNode(n) {
+    var c = { name: n.name, size: n.size, folder: n.folder };
+    if (n.children) c.children = n.children.map(cloneNode);
+    return c;
+  }
+  function uniqueName(list, name) {
+    var taken = {};
+    list.forEach(function (c) { taken[c.name] = true; });
+    if (!taken[name]) return name;
+    var dot = name.lastIndexOf(".");
+    var base = dot > 0 ? name.slice(0, dot) : name;
+    var ext = dot > 0 ? name.slice(dot) : "";
+    var i = 2;
+    while (taken[base + " " + i + ext]) i++;
+    return base + " " + i + ext;
+  }
+
+  function renderFiles() {
+    var crumbs = document.getElementById("crumbs");
+    crumbs.innerHTML = "";
+    path.forEach(function (n, i) {
+      var b = document.createElement("button");
+      b.type = "button";
+      b.textContent = n.name + (i < path.length - 1 ? "/" : "");
+      b.addEventListener("click", function () { path = path.slice(0, i + 1); renderFiles(); });
+      crumbs.appendChild(b);
+    });
+
+    document.getElementById("fileBarNormal").hidden = !!clip;
+    document.getElementById("fileBarPaste").hidden = !clip;
+    document.getElementById("fileHint").textContent = clip
+      ? (clip.mode === "cut" ? "Moving " : "Copying ") + clip.node.name + ". Open the target folder, then tap Paste here."
+      : "Tap a folder to open it, or a file to edit it. Hold a file for actions: export, rename, copy, cut, delete.";
+
+    var list = document.getElementById("fileList");
+    list.innerHTML = "";
+    var children = currentChildren();
+    if (children.length === 0) {
+      var empty = document.createElement("div");
+      empty.className = "row";
+      empty.innerHTML = '<div class="body"><span class="name">Empty folder</span><span class="note">Import a file, or create a new folder.</span></div>';
+      list.appendChild(empty);
+      return;
+    }
+
+    children.forEach(function (child) {
+      var row = document.createElement("div");
+      row.className = "frow" + (clip && clip.mode === "cut" && clip.node === child ? " cut" : "");
+      row.tabIndex = 0;
+      row.setAttribute("role", "button");
+      var ic = document.createElement("div");
+      ic.className = "ic";
+      ic.textContent = child.folder ? "DIR" : (child.name.split(".").pop() || "").slice(0, 3).toUpperCase();
+      row.appendChild(ic);
+      var body = document.createElement("div");
+      body.className = "body";
+      var n = document.createElement("span");
+      n.className = "fname";
+      n.textContent = child.name;
+      var meta = document.createElement("span");
+      meta.className = "mono";
+      meta.textContent = child.folder ? (child.children || []).length + " items" : child.size;
+      body.appendChild(n);
+      body.appendChild(meta);
+      row.appendChild(body);
+      if (child.folder) {
+        var chev = document.createElement("span");
+        chev.className = "chev";
+        chev.textContent = "›";
+        row.appendChild(chev);
+      }
+      attachPress(row,
+        function () { openFileMenu(child); },
+        function () {
+          if (child.folder) { path.push(child); renderFiles(); }
+          else openEditor(child);
+        });
+      list.appendChild(row);
+    });
+  }
+
+  // Hold a file or folder: action menu with Open, Edit, Rename, Copy, Cut, Export, Delete.
+  var fmTarget = null;
+  function openFileMenu(node) {
+    fmTarget = node;
+    document.getElementById("fmKind").textContent = node.folder ? "Folder" : "File";
+    document.getElementById("fmName").textContent = node.name;
+    document.getElementById("fmOpen").hidden = !node.folder;
+    document.getElementById("fmEdit").hidden = !!node.folder;
+    openOverlay("fileMenuWrap");
+  }
+  function removeFromCurrent(node) {
+    var c = currentNode();
+    c.children = c.children.filter(function (x) { return x !== node; });
+  }
+
+  document.getElementById("fmOpen").addEventListener("click", function () {
+    var n = fmTarget; closeOverlays();
+    if (n && n.folder) { path.push(n); renderFiles(); }
+  });
+  document.getElementById("fmEdit").addEventListener("click", function () {
+    var n = fmTarget; closeOverlays();
+    if (n && !n.folder) openEditor(n);
+  });
+  document.getElementById("fmRename").addEventListener("click", function () {
+    var n = fmTarget;
+    closeOverlays();
+    if (!n) return;
+    document.getElementById("nTitle").textContent = "Rename";
+    var input = document.getElementById("nInput");
+    input.value = n.name;
+    input.dataset.mode = "rename";
+    openOverlay("nameWrap");
+    input.focus();
+  });
+  document.getElementById("fNew").addEventListener("click", function () {
+    document.getElementById("nTitle").textContent = "New folder";
+    var input = document.getElementById("nInput");
+    input.value = "New folder";
+    input.dataset.mode = "new";
+    openOverlay("nameWrap");
+    input.focus();
+  });
+  document.getElementById("nSave").addEventListener("click", function () {
+    var input = document.getElementById("nInput");
+    var name = input.value.trim();
+    if (!name || name.indexOf("/") !== -1) { toast("Enter a name without /"); return; }
+    if (input.dataset.mode === "new") {
+      currentNode().children.push({ name: uniqueName(currentChildren(), name), folder: true, children: [] });
+      toast("Created folder " + name);
+    } else if (fmTarget) {
+      fmTarget.name = uniqueName(currentChildren().filter(function (c) { return c !== fmTarget; }), name);
+      toast("Renamed to " + fmTarget.name);
+    }
+    closeOverlays();
+    renderFiles();
+  });
+  document.getElementById("fmCopy").addEventListener("click", function () {
+    var n = fmTarget; closeOverlays();
+    if (!n) return;
+    clip = { node: n, mode: "copy" };
+    toast("Copied " + n.name + ". Open a folder and tap Paste here.");
+    renderFiles();
+  });
+  document.getElementById("fmCut").addEventListener("click", function () {
+    var n = fmTarget; closeOverlays();
+    if (!n) return;
+    clip = { node: n, mode: "cut" };
+    toast("Cut " + n.name + ". Open a folder and tap Paste here.");
+    renderFiles();
+  });
+  document.getElementById("fmExport").addEventListener("click", function () {
+    var n = fmTarget; closeOverlays();
+    if (n) toast("Exported " + n.name + " to RimMods/exports");
+  });
+  document.getElementById("fmDelete").addEventListener("click", function () {
+    var n = fmTarget; closeOverlays();
+    if (!n) return;
+    confirmDialog("Delete " + n.name + "?", n.folder ? "The folder and everything inside it will be deleted." : "This file will be deleted.", "Delete", function () {
+      removeFromCurrent(n);
+      if (clip && clip.node === n) clip = null;
+      renderFiles();
+    });
+  });
+
+  document.getElementById("pCancel").addEventListener("click", function () {
+    clip = null;
+    renderFiles();
+  });
+  document.getElementById("pPaste").addEventListener("click", function () {
+    if (!clip) return;
+    var item = clip.mode === "copy" ? cloneNode(clip.node) : clip.node;
+    item.name = uniqueName(currentChildren(), item.name);
+    currentNode().children.push(item);
+    toast((clip.mode === "copy" ? "Pasted copy of " : "Moved ") + item.name);
+    clip = null;
+    renderFiles();
+  });
+
+  document.getElementById("fImport").addEventListener("click", function () { openImport("files"); });
+
+  function jumpTo(names) {
+    path = [tree];
+    var node = tree;
+    names.forEach(function (name) {
+      var next = (node.children || []).filter(function (c) { return c.name === name; })[0];
+      if (next) { path.push(next); node = next; }
+    });
+    showTab("files");
+    renderFiles();
+  }
+  document.querySelectorAll("[data-jump]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      if (b.dataset.jump === "mods") jumpTo(["game", "Mods"]);
+      else jumpTo(["save", "Config"]);
+    });
+  });
+
+  // ---------- Saves ----------
+  // Date and play time are computed from the file. RimWorld uses 60,000 ticks per day,
+  // 60 days per year, and 4 quadrums of 15 days. The real-world save date is not stored in the file.
+  var QUADRUMS = ["Aprimay", "Jugust", "Septober", "Decembary"];
+  function gameDate(ticks) {
+    var d = Math.floor(ticks / 60000);
+    var year = 5500 + Math.floor(d / 60);
+    var doy = d % 60;
+    return "Year " + year + " · " + QUADRUMS[Math.floor(doy / 15)] + " " + (doy % 15 + 1);
+  }
+  function playTime(sec) {
+    var h = Math.floor(sec / 3600);
+    var m = Math.floor((sec % 3600) / 60);
+    return h > 0 ? h + "h " + m + "m played" : m + " min played";
+  }
+  function saveVersionMismatch(s) {
+    var sv = s.ver.split(" ")[0].split(".").slice(0, 2).join(".");
+    return sv !== gameVer;
+  }
+  function sortedSaves() {
+    return saves.slice().sort(function (a, b) { return b.ticks - a.ticks; });
+  }
+  function selectedSaves() { return saves.filter(function (s) { return saveSel[s.id]; }); }
+
+  function renderSaves() {
+    setVerLabels();
+    document.getElementById("saveCount").textContent = saves.length + " saves";
+
+    document.getElementById("saveStamp").textContent = "Checked just now · " + saves.length + " saves";
+
+    var sel = selectedSaves();
+    document.getElementById("saveSelbar").hidden = sel.length === 0;
+    document.getElementById("saveSelCount").textContent = sel.length + " selected";
+    document.getElementById("saveHint").hidden = sel.length > 0;
+    document.getElementById("sExport").disabled = sel.length === 0;
+    document.getElementById("sDelete").disabled = sel.length === 0;
+    document.getElementById("sDupe").disabled = sel.length !== 1;
+
+    var rows = document.getElementById("saveRows");
+    rows.innerHTML = "";
+    if (saves.length === 0) {
+      var empty = document.createElement("div");
+      empty.className = "row";
+      empty.innerHTML = '<div class="body"><span class="name">No saves</span><span class="note">Import a .rws file to add one.</span></div>';
+      rows.appendChild(empty);
+      return;
+    }
+
+    sortedSaves().forEach(function (s) {
+      var isSel = !!saveSel[s.id];
+      var row = document.createElement("div");
+      row.className = "row" + (isSel ? " selected" : "");
+      row.tabIndex = 0;
+      row.setAttribute("role", "button");
+      row.setAttribute("aria-pressed", String(isSel));
+
+      var body = document.createElement("div");
+      body.className = "body";
+      var name = document.createElement("span");
+      name.className = "name";
+      name.textContent = s.name + ".rws";
+      var date = document.createElement("span");
+      date.className = "mono";
+      date.textContent = gameDate(s.ticks) + " · " + playTime(s.play);
+      var meta = document.createElement("span");
+      meta.className = "mono";
+      meta.textContent = s.scenario + " · " + s.ver.split(" ")[0] + " · " + s.mods + " mods";
+      body.appendChild(name);
+      body.appendChild(date);
+      body.appendChild(meta);
+      row.appendChild(body);
+
+      var box = document.createElement("span");
+      box.className = "box" + (isSel ? " on" : "");
+      box.textContent = isSel ? "✓" : "";
+      row.appendChild(box);
+
+      row.addEventListener("click", function () {
+        saveSel[s.id] = !saveSel[s.id];
+        if (!saveSel[s.id]) delete saveSel[s.id];
+        renderSaves();
+      });
+      rows.appendChild(row);
+    });
+  }
+
+  document.getElementById("saveDeselect").addEventListener("click", function () {
+    saveSel = {};
+    renderSaves();
+  });
+
+  document.getElementById("sExport").addEventListener("click", function () {
+    var n = selectedSaves().length;
+    saveSel = {};
+    renderSaves();
+    toast("Exported " + n + " save(s) to RimMods/exports");
+  });
+  document.getElementById("sDupe").addEventListener("click", function () {
+    var s = selectedSaves()[0];
+    if (!s) return;
+    openSaveNameDialog("dupe", s, "Duplicate save", s.name + "_copy", "Duplicate");
+  });
+  document.getElementById("sImportTop").addEventListener("click", function () { openImport("saves"); });
+  document.getElementById("sRename").addEventListener("click", function () {
+    var s = selectedSaves()[0];
+    if (!s) return;
+    openSaveNameDialog("rename", s, "Rename save", s.name, "Rename");
+  });
+  function openSaveNameDialog(mode, s, title, value, action) {
+    var input = document.getElementById("dInput");
+    document.getElementById("dTitle").textContent = title;
+    document.getElementById("dSave").textContent = action;
+    input.value = value;
+    input.dataset.id = s.id;
+    input.dataset.mode = mode;
+    openOverlay("dupeWrap");
+    input.focus();
+    input.select();
+  }
+  document.getElementById("dSave").addEventListener("click", function () {
+    var input = document.getElementById("dInput");
+    var name = input.value.trim();
+    if (!name || name.indexOf("/") !== -1) { toast("Enter a name without /"); return; }
+    var src = saves.filter(function (s) { return s.id === input.dataset.id; })[0];
+    if (!src) { closeOverlays(); return; }
+    if (input.dataset.mode === "rename") {
+      src.name = name;
+      closeOverlays();
+      saveSel = {};
+      toast("Renamed to " + name + ".rws");
+      renderSaves();
+      return;
+    }
+    var copy = {};
+    Object.keys(src).forEach(function (k) { copy[k] = src[k]; });
+    copy.id = "s" + (++saveSeq);
+    copy.name = name;
+    saves.push(copy);
+    saveSel = {};
+    closeOverlays();
+    toast("Duplicated " + src.name + " as " + name + ".rws");
+    renderSaves();
+  });
+  document.getElementById("sDelete").addEventListener("click", function () {
+    var sel = selectedSaves();
+    confirmDialog("Delete " + sel.length + " save(s)?", sel.map(function (s) { return s.name + ".rws"; }).join("\n"), "Delete", function () {
+      var ids = sel.map(function (s) { return s.id; });
+      saves = saves.filter(function (s) { return ids.indexOf(s.id) === -1; });
+      saveSel = {};
+      renderSaves();
+    });
+  });
+
+  var editorPath = document.getElementById("editorPath");
+  var editorText = document.getElementById("editorText");
+  function openEditor(node) {
+    editorPath.textContent = "files/" + node.name;
+    editorText.value = node.name === "ModsConfig.xml"
+      ? "<ModsConfigData>\n  <version>1.7.4990 rev1069</version>\n  <activeMods>\n    <li>ludeon.rimworld</li>\n    <li>ludeon.rimworld.royalty</li>\n  </activeMods>\n</ModsConfigData>"
+      : "Sample contents of " + node.name;
+    showTab("editor");
+  }
+  document.getElementById("backFiles").addEventListener("click", function () { showTab("files"); });
+  document.getElementById("cancelEdit").addEventListener("click", function () { showTab("files"); });
+  document.getElementById("saveEdit").addEventListener("click", function () { toast("Saved. Backup kept as .bak"); showTab("files"); });
+
+  document.querySelectorAll("[data-refresh]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      refreshTab(b.dataset.refresh);
+      toast("Refreshed");
+    });
+  });
+  renderMods();
+  renderFiles();
+  renderSaves();
+  showTab("mods");
+})();
+</script>
+
+</body></html>

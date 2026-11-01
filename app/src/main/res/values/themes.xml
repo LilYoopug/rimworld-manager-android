@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Material 3 with dynamic color on Android 12+, day/night aware. -->
-    <style name="Theme.RimManager" parent="Theme.Material3.DynamicColors.DayNight.NoActionBar" />
+    <!-- Views are drawn in code to match the design. The theme only sets defaults for system widgets. -->
+    <style name="Theme.RimManager" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/logo_background</item>
+        <item name="colorOnPrimary">#FFFFFF</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+    </style>
 </resources>

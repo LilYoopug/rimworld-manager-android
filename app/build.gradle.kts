@@ -18,7 +18,6 @@ android {
     buildFeatures {
         aidl = true
         buildConfig = true
-        viewBinding = true
     }
 
     compileOptions {
@@ -42,8 +41,8 @@ dependencies {
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("androidx.recyclerview:recyclerview:1.3.2")
     implementation("com.google.android.material:material:1.12.0")
+    implementation("androidx.documentfile:documentfile:1.0.1")
 
-    // Shizuku API 13.1.5 (latest published on Maven Central).
     implementation("dev.rikka.shizuku:api:13.1.5")
     implementation("dev.rikka.shizuku:provider:13.1.5")
 }

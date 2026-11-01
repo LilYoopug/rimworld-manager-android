@@ -1,28 +1,40 @@
 package com.lilyoopug.rimanager;
 
+import android.os.ParcelFileDescriptor;
+
 interface IModService {
-    // One line per mod: folder|name|packageId|enabled(1/0)
+    // Mods. Returns JSON:
+    // {"active":["packageid",...], "mods":[{folder,name,pid,author,modVer,supported[],deps[{pid,name}],after[],desc}]}
     String listMods() = 1;
+    // Writes the load order (packageIds, in order). ludeon.* entries are always kept.
+    String setActiveMods(in String[] packageIds, boolean backup) = 2;
+    String deleteMods(in String[] folderNames) = 3;
+    String importMods(in String[] folderNames) = 4;       // copies staging folders into the Mods folder
+    String exportMod(String folderName) = 5;              // tar into RimMods/exports
+    String listStaging() = 6;
+    String writeStaging(String relPath, in ParcelFileDescriptor pfd) = 7; // streams a file into staging
+    // Imports one zip: every mod folder in it is copied into the Mods folder. One result line per mod.
+    String importZip(String fileName, in ParcelFileDescriptor pfd) = 8;
 
-    // Folder names inside /storage/emulated/0/RimMods (created if missing), one per line.
-    String listStaging() = 2;
+    // Files (paths start with "files/")
+    String listDir(String relPath) = 9;                   // name|isDir(1/0)
+    String readText(String relPath) = 10;
+    void writeText(String relPath, String content, boolean backup) = 11;
+    String importToGame(String gamePath, in ParcelFileDescriptor pfd) = 12;
+    String exportFile(String gamePath) = 13;              // copies into RimMods/exports
+    // Exports several files and folders into RimMods/exports. Folders become .tar files.
+    String exportPaths(in String[] gamePaths) = 14;
+    String copyInGame(String srcPath, String dstPath) = 15;
+    String moveInGame(String srcPath, String dstPath) = 16;
+    String deleteInGame(in String[] paths) = 17;
+    String makeDirInGame(String path) = 18;
 
-    // Read a text file relative to the game's private data folder.
-    String readText(String relPath) = 3;
+    // Saves. listSaves returns JSON: [{name,ticks,play,ver,scenario,mods}]
+    String listSaves() = 19;
+    String renameSave(String oldName, String newName) = 20;
+    String duplicateSave(String name, String newName) = 21;
+    String deleteSaves(in String[] names) = 22;
+    String exportSaves(in String[] names) = 23;
 
-    // Write a text file relative to the game's private data folder. XML is validated first,
-    // and the previous copy is saved as <file>.bak.
-    void writeText(String relPath, String content) = 4;
-
-    // Set activeMods in ModsConfig.xml. Base game and DLC entries are kept automatically.
-    String setActiveMods(in String[] packageIds) = 5;
-
-    // Remove mod folders from the game's Mods folder.
-    String deleteMods(in String[] folderNames) = 6;
-
-    // Copy staged mod folders into the game's Mods folder.
-    String importMods(in String[] folderNames) = 7;
-
-    // Reserved destroy transaction used by Shizuku when the service is unbound.
     void destroy() = 16777114;
 }
