@@ -43,7 +43,7 @@ dependencies {
     implementation("androidx.recyclerview:recyclerview:1.3.2")
     implementation("com.google.android.material:material:1.12.0")
 
-    // Shizuku API 13.6 (check Maven Central for the exact patch if 13.6.0 is missing).
-    implementation("dev.rikka.shizuku:api:13.6.0")
-    implementation("dev.rikka.shizuku:provider:13.6.0")
+    // Shizuku API 13.1.5 (latest published on Maven Central).
+    implementation("dev.rikka.shizuku:api:13.1.5")
+    implementation("dev.rikka.shizuku:provider:13.1.5")
 }
