@@ -1,8 +1,8 @@
 package com.lilyoopug.rimanager
 
-import android.content.ComponentName
+import android.Manifest
 import android.content.Context
-import android.content.ServiceConnection
+import android.content.res.ColorStateList
 import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.graphics.Color
@@ -11,17 +11,21 @@ import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Bundle
-import android.os.IBinder
+import android.os.Build
 import android.os.ParcelFileDescriptor
 import android.text.InputType
+import android.text.TextUtils
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.CheckBox
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
+import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
@@ -38,8 +42,9 @@ import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import org.json.JSONArray
 import org.json.JSONObject
-import rikka.shizuku.Shizuku
+import java.io.File
 import java.util.Collections
+import java.util.UUID
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
@@ -61,6 +66,7 @@ private data class ModInfo(
     val supported: List<String> = emptyList(),
     val deps: List<Dep> = emptyList(),
     val after: List<String> = emptyList(),
+    val before: List<String> = emptyList(),
     val desc: String = "",
     val dlc: Boolean = false,
     val present: Boolean = true,
@@ -127,6 +133,7 @@ private fun parseMods(json: String): Pair<List<String>, List<ModInfo>> {
                 d.getJSONObject(j).let { Dep(it.getString("pid"), it.getString("name")) }
             },
             after = m.getJSONArray("after").strings(),
+            before = m.getJSONArray("before").strings(),
             desc = m.getString("desc"),
         )
     }
@@ -201,8 +208,7 @@ class MainActivity : AppCompatActivity() {
     private val prefs by lazy { getSharedPreferences(PREFS, Context.MODE_PRIVATE) }
     private val io: ExecutorService = Executors.newSingleThreadExecutor()
 
-    @Volatile
-    private var service: IModService? = null
+    private val service: IModService? get() = ShizukuBridge.service
 
     private var tab = Tab.MODS
     private var editingPath: String? = null
@@ -238,47 +244,10 @@ class MainActivity : AppCompatActivity() {
     private var filesMulti = false
     private val selFiles = linkedSetOf<String>()   // full game paths
 
-    // ---------- Shizuku ----------
-
-    private val binderReceived = Shizuku.OnBinderReceivedListener { checkAndBind() }
-
-    private val binderDead = Shizuku.OnBinderDeadListener {
-        service = null
-        runOnUiThread { status("Shizuku stopped. Start Shizuku, then reopen the app.") }
-    }
-
-    private val permissionResult = Shizuku.OnRequestPermissionResultListener { code, result ->
-        if (code == REQ_PERMISSION) {
-            if (result == PackageManager.PERMISSION_GRANTED) bindService()
-            else runOnUiThread { status("Shizuku permission denied.") }
-        }
-    }
-
-    private val connection = object : ServiceConnection {
-        override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
-            service = IModService.Stub.asInterface(binder)
-            runOnUiThread { loadTab() }
-        }
-
-        override fun onServiceDisconnected(name: ComponentName?) {
-            service = null
-            runOnUiThread { status("Service disconnected.") }
-        }
-    }
-
-    private val args by lazy {
-        Shizuku.UserServiceArgs(ComponentName(packageName, ModService::class.java.name))
-            .daemon(false)
-            .processNameSuffix("modsvc")
-            .debuggable(BuildConfig.DEBUG)
-            .version(BuildConfig.VERSION_CODE)
-            .tag("rim-mod-manager")
-    }
-
     // ---------- file pickers (Android file manager) ----------
 
     private val pickZip = registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
-        if (uris.isNotEmpty()) importZips(uris)
+        if (uris.isNotEmpty()) addToPreview(uris)
     }
     private val pickFolder = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         uri?.let { importFolder(it) }
@@ -350,9 +319,7 @@ class MainActivity : AppCompatActivity() {
         root.addView(bar, matchW(8))
         setContentView(root)
 
-        Shizuku.addBinderReceivedListenerSticky(binderReceived)
-        Shizuku.addBinderDeadListener(binderDead)
-        Shizuku.addRequestPermissionResultListener(permissionResult)
+        ShizukuBridge.onChanged = { loadTab() }
 
         showTab(Tab.MODS)
     }
@@ -361,33 +328,19 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         if (editingPath != null) return
         // Auto refresh: every time the app comes back, reload the current tab.
-        if (service == null && Shizuku.pingBinder()) checkAndBind() else loadTab()
+        val reason = ShizukuBridge.ensureBound()
+        if (service == null) status(reason ?: "Connecting to Shizuku…") else loadTab()
     }
 
     override fun onDestroy() {
-        Shizuku.removeBinderReceivedListener(binderReceived)
-        Shizuku.removeBinderDeadListener(binderDead)
-        Shizuku.removeRequestPermissionResultListener(permissionResult)
-        if (service != null) Shizuku.unbindUserService(args, connection, true)
+        // The Shizuku connection stays open on purpose: a background import may still be running.
+        ImportQueue.removeListener(importRefresh)
+        importSheet?.dismiss()
+        ImportPreview.removeListener(previewRefresh)
+        previewSheet?.dismiss()
         io.shutdown()
+        previewIo.shutdown()
         super.onDestroy()
-    }
-
-    private fun checkAndBind() {
-        if (Shizuku.isPreV11()) {
-            runOnUiThread { status("Shizuku is too old. Update Shizuku.") }
-            return
-        }
-        when {
-            Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED -> bindService()
-            Shizuku.shouldShowRequestPermissionRationale() ->
-                runOnUiThread { status("Shizuku permission was denied. Allow it in the Shizuku app.") }
-            else -> Shizuku.requestPermission(REQ_PERMISSION)
-        }
-    }
-
-    private fun bindService() {
-        Shizuku.bindUserService(args, connection)
     }
 
     // ---------- settings storage ----------
@@ -876,6 +829,12 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
             }
+            for (b in m.before) {
+                val k = b.lowercase()
+                if (k in order && order.indexOf(k) < order.indexOf(m.key)) {
+                    out += "Must load before ${if (k == BASE_KEY) "RimWorld core" else catalog[k]?.name ?: b}"
+                }
+            }
             for (a in m.after) {
                 val k = a.lowercase()
                 if (k in order && order.indexOf(k) > order.indexOf(m.key)) {
@@ -909,6 +868,16 @@ class MainActivity : AppCompatActivity() {
                 notice("$warnings warning${if (warnings == 1) "" else "s"} in enabled mods", "Show") {
                     enabledView = true
                     renderMods()
+                },
+                12
+            )
+        }
+
+        if (ImportQueue.isActive()) {
+            val jobs = ImportQueue.snapshot()
+            c.put(
+                notice("Importing mods · ${jobs.count { it.finished }} of ${jobs.size} done", "Show") {
+                    showImportSheet()
                 },
                 12
             )
@@ -1068,6 +1037,8 @@ class MainActivity : AppCompatActivity() {
             )
         }
 
+        row.addView(thumbView(m), LinearLayout.LayoutParams(dp(44), dp(44)).apply { rightMargin = dp(10) })
+
         val body = col()
         body.addView(tv(m.name, 15f, bold = true))
         body.addView(tv(m.pid, 12f, mono = true, color = p.muted))
@@ -1092,6 +1063,24 @@ class MainActivity : AppCompatActivity() {
             }
         }
         return row
+    }
+
+    /** Mod icon (About/ModIcon.png). Shows the first letter of the name until the image arrives. */
+    private fun thumbView(m: ModInfo): FrameLayout {
+        val frame = FrameLayout(this).apply { background = rounded(p.accentSoft, 10) }
+        frame.addView(
+            tv(m.name.take(1).uppercase(), 16f, bold = true, color = p.accent).apply { gravity = Gravity.CENTER },
+            FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+        )
+        if (m.folder.isNotEmpty()) {
+            val img = ImageView(this).apply { scaleType = ImageView.ScaleType.CENTER_CROP }
+            frame.addView(
+                img,
+                FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+            )
+            ModImages.load(m.folder, preview = false) { bmp -> if (bmp != null) img.setImageBitmap(bmp) }
+        }
+        return frame
     }
 
     private fun toggleSel(key: String) {
@@ -1177,23 +1166,64 @@ class MainActivity : AppCompatActivity() {
         renderMods()
     }
 
+    /**
+     * Sorts the load order from the rules in each mod's About.xml, so every loadAfter and
+     * loadBefore rule is met where possible. Nothing is hardcoded to a particular mod.
+     *  - Ranking when rules allow it: mods with a loadBefore target in the load order first, then RimWorld's own
+     *    packages (ludeon.*), then everything else. Ties are broken by name.
+     *  - Implicit rule: RimWorld core loads before its DLCs.
+     */
     private fun autoSort() {
+        val nodes = listOf(BASE_KEY) + enabledKeys()
+        val set = nodes.toSet()
         val rank = { k: String ->
             when {
-                k == BASE_KEY -> 0
-                catalog[k]?.dlc == true -> 1
-                k == "brrainz.harmony" -> 2
-                else -> 3
+                // Any mod whose loadBefore target is in this load order (core, a DLC or another mod) goes first.
+                catalog[k]?.before?.any { it.lowercase() in set } == true -> 0
+                k.startsWith("ludeon.") -> 1
+                else -> 2
             }
         }
-        val sorted = order.sortedWith(
-            compareBy<String>({ rank(it) }, { catalog[it]?.name?.lowercase() ?: it })
-        )
+
+        // preds[k] = keys that must come before k
+        val preds = nodes.associateWith { mutableSetOf<String>() }
+        for (k in nodes) {
+            if (k != BASE_KEY && k.startsWith("ludeon.") && BASE_KEY in set) preds.getValue(k).add(BASE_KEY)
+        }
+        for (k in nodes) {
+            val mod = catalog[k] ?: continue
+            for (a in mod.after) {
+                val ak = a.lowercase()
+                if (ak in set && ak != k) preds.getValue(k).add(ak)
+            }
+            for (b in mod.before) {
+                val bk = b.lowercase()
+                if (bk in set && bk != k) preds.getValue(bk).add(k)
+            }
+        }
+
+        val sorted = mutableListOf<String>()
+        val remaining = nodes.toMutableList()
+        var cycle = false
+        while (remaining.isNotEmpty()) {
+            var ready = remaining.filter { k -> preds.getValue(k).all { it in sorted } }
+            if (ready.isEmpty()) {
+                cycle = true
+                ready = remaining
+            }
+            val pick = ready.minWith(compareBy<String>({ rank(it) }, { catalog[it]?.name?.lowercase() ?: it }))
+            sorted += pick
+            remaining.remove(pick)
+        }
+
         order.clear()
         order += sorted
         dirty = true
         renderMods()
-        toast("Auto-sorted. Check the warnings before you save.")
+        toast(
+            if (cycle) "Auto-sorted. Some mods have circular load rules. Check the warnings."
+            else "Auto-sorted. Check the warnings before you save."
+        )
     }
 
     private fun saveMods() {
@@ -1206,11 +1236,26 @@ class MainActivity : AppCompatActivity() {
 
     private fun openDetails(m: ModInfo) {
         sheet { box, d ->
-            val preview = tv("About/preview.png", 12f, mono = true, color = p.muted).apply {
-                gravity = Gravity.CENTER
+            // About/Preview.png, falling back to About/ModIcon.png
+            val preview = ImageView(this).apply {
+                scaleType = ImageView.ScaleType.CENTER_CROP
                 background = rounded(p.accentSoft, 14, p.line)
             }
             box.addView(preview, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(170)))
+            if (m.folder.isNotEmpty()) {
+                ModImages.load(m.folder, preview = true) { bmp ->
+                    if (bmp != null) {
+                        preview.setImageBitmap(bmp)
+                    } else {
+                        ModImages.load(m.folder, preview = false) { icon ->
+                            if (icon != null) {
+                                preview.scaleType = ImageView.ScaleType.CENTER_INSIDE
+                                preview.setImageBitmap(icon)
+                            }
+                        }
+                    }
+                }
+            }
             box.put(tv(m.name, 20f, bold = true), 10)
 
             box.put(kv("Author", m.author.ifEmpty { "—" }), 8)
@@ -1382,48 +1427,325 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** Imports every selected zip in turn. Each zip can hold one or more mods. */
-    private fun importZips(uris: List<Uri>) {
-        val svc = service ?: run {
-            toast("Shizuku is not connected.")
+    private val zipTypes = arrayOf("application/zip", "application/x-zip-compressed")
+    private val previewIo = Executors.newSingleThreadExecutor()
+
+    /** Copies each picked zip into cache, reads its About.xml and opens the review sheet. Nothing is imported yet. */
+    private fun addToPreview(uris: List<Uri>) {
+        val picked = uris.map { it to displayName(it, "mod.zip") }
+        val zips = picked.filter { it.second.endsWith(".zip", ignoreCase = true) }
+        if (zips.isEmpty()) {
+            toast("Pick one or more .zip files.")
             return
         }
-        val names = uris.map { displayName(it, "mod.zip") }
-        io.execute {
-            val lines = mutableListOf<String>()
-            uris.forEachIndexed { i, uri ->
-                val name = names[i]
-                if (!name.endsWith(".zip", ignoreCase = true)) {
-                    lines += "$name: not a .zip, skipped"
-                    return@forEachIndexed
-                }
-                lines += try {
-                    contentResolver.openFileDescriptor(uri, "r")!!.use { pfd -> svc.importZip(name, pfd) }
-                } catch (e: Exception) {
-                    "$name: error: ${e.message}"
-                }
-            }
-            runOnUiThread {
-                showImportResult(lines)
-                loadTab()
-            }
+        if (zips.size < picked.size) toast("${picked.size - zips.size} file(s) were not .zip and were skipped.")
+
+        val batch = zips.map { (uri, name) ->
+            val item = PreviewItem(UUID.randomUUID().toString(), name, File(cacheDir, "imports/${UUID.randomUUID()}"))
+            ImportPreview.add(item)
+            item to uri
+        }
+        showPreviewSheet()
+        previewIo.execute {
+            val installed = installedPids()
+            batch.forEach { (item, uri) -> loadPreviewItem(item, uri, installed) }
+            ImportPreview.markDuplicates()
         }
     }
 
-    private fun showImportResult(lines: List<String>) {
-        val text = lines.joinToString("\n").trim()
-        val all = text.lines()
-        val ok = all.count { it.startsWith("OK ") }
-        val skip = all.count { it.startsWith("SKIP ") }
-        val fail = all.count {
-            it.startsWith("FAIL ") || it.startsWith("MISSING ") || it.contains(": error") ||
-                it.contains("no mod folder") || it.contains("not a .zip")
+    /** Package IDs already in the Mods folder, or null when Shizuku is not connected. */
+    private fun installedPids(): Set<String>? {
+        val svc = service ?: return null
+        return runCatching {
+            parseMods(svc.listMods()).second.map { it.pid.lowercase() }.toSet()
+        }.getOrNull()
+    }
+
+    private fun loadPreviewItem(item: PreviewItem, uri: Uri, installed: Set<String>?) {
+        try {
+            item.dir.mkdirs()
+            val input = contentResolver.openInputStream(uri) ?: throw IllegalStateException("could not open the file")
+            input.use { src -> item.file.outputStream().use { src.copyTo(it) } }
+        } catch (e: Exception) {
+            setPreview(item, PreviewState.FAILED, "Could not read the file: ${e.message}")
+            return
         }
-        MaterialAlertDialogBuilder(this)
-            .setTitle("Zip import: $ok imported, $skip skipped, $fail failed")
-            .setMessage(text.ifEmpty { "Nothing was imported." })
-            .setPositiveButton("OK", null)
-            .show()
+        inspectZip(item, installed)
+    }
+
+    /** Reads About/About.xml straight out of the zip, without extracting anything. */
+    private fun inspectZip(item: PreviewItem, installed: Set<String>?) {
+        val raw = try {
+            java.util.zip.ZipFile(item.file).use { zf ->
+                Collections.list(zf.entries())
+                    .firstOrNull { !it.name.startsWith("__MACOSX") && it.name.lowercase().endsWith("about/about.xml") }
+                    ?.let { entry -> zf.getInputStream(entry).use { it.readBytes().toString(Charsets.UTF_8) } }
+            }
+        } catch (e: java.util.zip.ZipException) {
+            setPreview(item, PreviewState.FAILED, "Not a valid zip file.")
+            return
+        } catch (e: Exception) {
+            setPreview(item, PreviewState.FAILED, "Could not read the zip: ${e.message}")
+            return
+        }
+        if (raw == null) {
+            setPreview(item, PreviewState.FAILED, "No About/About.xml found. This is not a RimWorld mod.")
+            return
+        }
+
+        val about = parseAbout(item.zipName, raw)
+        val name = about.getString("name")
+        val pid = about.getString("pid")
+        val supported = about.getJSONArray("supported").strings()
+        item.modName = name
+        item.packageId = pid
+        item.version = about.getString("modVer")
+        item.supported = supported
+
+        when {
+            pid.isEmpty() -> setPreview(item, PreviewState.WARNING, "About.xml has no packageId. RimWorld may not load it.")
+            installed != null && pid.lowercase() in installed ->
+                setPreview(item, PreviewState.INSTALLED, "Already in the Mods folder. It will be skipped.")
+            supported.isNotEmpty() && gameVer !in supported ->
+                setPreview(item, PreviewState.WARNING, "Not listed for RimWorld $gameVer (lists ${supported.joinToString(", ")}).")
+            installed == null -> setPreview(item, PreviewState.READY, "Ready. Shizuku is not connected, so the installed check was skipped.")
+            else -> setPreview(item, PreviewState.READY, "Ready")
+        }
+    }
+
+    private fun setPreview(item: PreviewItem, state: PreviewState, message: String) {
+        item.state = state
+        item.message = message
+        ImportPreview.changed()
+    }
+
+    private var previewSheet: BottomSheetDialog? = null
+    private var previewList: LinearLayout? = null
+    private var previewSummary: TextView? = null
+    private var previewFooter: LinearLayout? = null
+    private val previewRefresh: () -> Unit = { refreshPreviewSheet() }
+
+    /** Review sheet: every zip with its mod name, status and a Remove button, plus Add more, Discard all and Continue. */
+    private fun showPreviewSheet() {
+        if (previewSheet?.isShowing == true) return
+        val list = col()
+        val summary = tv("", 12f, mono = true, color = p.muted)
+        val footer = col()
+        val dialog = BottomSheetDialog(this)
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(p.surface)
+            setPadding(dp(16), dp(12), dp(16), dp(20))
+        }
+        box.addView(tv("Review zips before import", 18f, bold = true))
+        box.addView(summary, matchW(4))
+        box.addView(
+            ScrollView(this).apply { addView(list) },
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(380)).apply { topMargin = dp(12) }
+        )
+        box.addView(footer, matchW(12))
+        dialog.setContentView(box)
+        dialog.setOnDismissListener {
+            ImportPreview.removeListener(previewRefresh)
+            previewSheet = null
+            previewList = null
+            previewSummary = null
+            previewFooter = null
+        }
+        previewSheet = dialog
+        previewList = list
+        previewSummary = summary
+        previewFooter = footer
+        ImportPreview.addListener(previewRefresh)
+        refreshPreviewSheet()
+        dialog.show()
+    }
+
+    private fun refreshPreviewSheet() {
+        val list = previewList ?: return
+        val items = ImportPreview.snapshot()
+        list.removeAllViews()
+        if (items.isEmpty()) {
+            list.put(emptyRow("Nothing to import", "Add zips to start again."), 0)
+        } else {
+            items.forEachIndexed { i, item -> list.put(previewRow(item), if (i == 0) 0 else 8) }
+        }
+
+        val ready = items.count { it.state == PreviewState.READY || it.state == PreviewState.WARNING }
+        val installed = items.count { it.state == PreviewState.INSTALLED }
+        val failed = items.count { it.state == PreviewState.FAILED }
+        val busy = items.any { it.state == PreviewState.LOADING }
+        previewSummary?.text = "$ready ready · $installed already installed · $failed failed"
+
+        previewFooter?.let { footer ->
+            footer.removeAllViews()
+            footer.addView(
+                actionRow(
+                    listOf(
+                        BarBtn("Add more") { pickZip.launch(zipTypes) },
+                        BarBtn("Discard all", danger = true) { ImportPreview.discardAll() },
+                        BarBtn("Continue", primary = true, enabled = ready > 0 && !busy) { continueImport() },
+                    )
+                )
+            )
+        }
+    }
+
+    private fun previewRow(item: PreviewItem): LinearLayout {
+        val state = item.state
+        val bad = state == PreviewState.FAILED || state == PreviewState.WARNING
+        val row = rowShell(selected = false, warn = bad)
+        row.isClickable = false
+        val body = col()
+
+        body.addView(tv(item.modName.ifEmpty { item.zipName }, 15f, bold = true))
+        val sub = listOf(item.packageId, item.version).filter { it.isNotEmpty() }.joinToString(" · ")
+        body.addView(
+            tv(if (sub.isEmpty()) item.zipName else "$sub · ${item.zipName}", 12f, mono = true, color = p.muted),
+            matchW(2)
+        )
+        val label = when (state) {
+            PreviewState.LOADING -> "Reading"
+            PreviewState.READY -> "Ready"
+            PreviewState.WARNING -> "Check"
+            PreviewState.INSTALLED -> "Installed"
+            PreviewState.FAILED -> "Failed"
+        }
+        body.addView(tv("$label · ${item.message}", 12f, bold = bad, color = if (bad) p.warn else p.muted), matchW(4))
+
+        row.addView(body, weightLp())
+        row.addView(textBtn("Remove", color = p.warn) { ImportPreview.remove(item.id) })
+        return row
+    }
+
+    /** Starts the background import for the zips that passed the review. */
+    private fun continueImport() {
+        val ready = ImportPreview.takeImportable()
+        if (ready.isEmpty()) {
+            toast("Nothing to import.")
+            return
+        }
+        ImportQueue.enqueue(
+            ready.map { ImportJob(it.id, it.file, it.zipName, it.modName.ifEmpty { it.zipName }) }
+        )
+        previewSheet?.dismiss()
+        startImportService()
+        showImportSheet()
+    }
+
+    private fun startImportService() {
+        if (Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            // Imports run either way. The permission only controls whether the progress notification shows.
+            notifPerm.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            ImportService.start(this)
+        }
+    }
+
+    private val notifPerm = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
+        ImportService.start(this)
+    }
+
+    private var importSheet: BottomSheetDialog? = null
+    private var importList: LinearLayout? = null
+    private var importSummary: TextView? = null
+    private var importClosing = false
+    private val importRefresh: () -> Unit = { refreshImportSheet() }
+
+    /** Progress sheet. Pending zips are on top; finished ones move to the bottom. Closes when all are done. */
+    private fun showImportSheet() {
+        if (importSheet?.isShowing == true) return
+        importClosing = false
+        val list = col()
+        val summary = tv("", 12f, mono = true, color = p.muted)
+        val dialog = BottomSheetDialog(this)
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(p.surface)
+            setPadding(dp(16), dp(12), dp(16), dp(20))
+        }
+        box.addView(tv("Importing mods", 18f, bold = true))
+        box.addView(summary, matchW(4))
+        box.addView(
+            ScrollView(this).apply { addView(list) },
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(420)).apply { topMargin = dp(12) }
+        )
+        box.addView(note("Imports keep running if you close this sheet. Reopen it from the Mods tab."), matchW(8))
+        dialog.setContentView(box)
+        dialog.setOnDismissListener {
+            ImportQueue.removeListener(importRefresh)
+            importSheet = null
+            importList = null
+            importSummary = null
+        }
+        importSheet = dialog
+        importList = list
+        importSummary = summary
+        ImportQueue.addListener(importRefresh)
+        refreshImportSheet()
+        dialog.show()
+    }
+
+    private fun refreshImportSheet() {
+        val list = importList ?: return
+        val jobs = ImportQueue.snapshot()
+        val pending = jobs.filter { !it.finished }
+        val finished = jobs.filter { it.finished }
+        list.removeAllViews()
+        (pending + finished).forEachIndexed { i, job -> list.put(importRow(job), if (i == 0) 0 else 8) }
+        importSummary?.text = "${finished.size} of ${jobs.size} done"
+
+        if (jobs.isNotEmpty() && pending.isEmpty() && !importClosing) {
+            importClosing = true
+            val installed = jobs.count { it.state == JobState.DONE }
+            val skipped = jobs.count { it.state == JobState.SKIPPED }
+            val failed = jobs.count { it.state == JobState.FAILED }
+            toast("Import finished: $installed installed, $skipped already installed, $failed failed")
+            importSummary?.postDelayed({ importSheet?.dismiss() }, 1200)
+        }
+    }
+
+    private fun importRow(job: ImportJob): LinearLayout {
+        val failed = job.state == JobState.FAILED
+        val row = rowShell(selected = false, warn = failed)
+        row.isClickable = false
+        val body = col()
+
+        val top = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        top.addView(
+            tv(job.name, 14f, bold = true).apply {
+                maxLines = 1
+                ellipsize = TextUtils.TruncateAt.END
+            },
+            weightLp()
+        )
+        top.addView(tv("${job.percent}%", 12f, mono = true, color = p.muted))
+        body.addView(top)
+
+        body.addView(
+            ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+                max = 100
+                progress = job.percent
+                progressTintList = ColorStateList.valueOf(if (failed) p.warn else p.accent)
+                progressBackgroundTintList = ColorStateList.valueOf(p.line)
+            },
+            matchW(6)
+        )
+
+        val line = when (job.state) {
+            JobState.DONE -> "Done · ${job.message}"
+            JobState.SKIPPED -> "Skipped · ${job.message}"
+            JobState.FAILED -> "Failed · ${job.message}"
+            else -> job.status
+        }
+        body.addView(tv(line, 12f, color = if (failed) p.warn else p.muted), matchW(4))
+        row.addView(body, weightLp())
+        return row
     }
 
     private fun importFolder(treeUri: Uri) {

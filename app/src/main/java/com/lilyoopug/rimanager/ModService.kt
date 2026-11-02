@@ -26,7 +26,7 @@ private fun Element.items(parent: String): List<String> =
     kid(parent)?.kids()?.map { it.textContent.trim() }.orEmpty()
 
 /** Reads one About.xml into a JSON object. Missing fields fall back to safe defaults. */
-private fun parseAbout(folder: String, raw: String): JSONObject {
+internal fun parseAbout(folder: String, raw: String): JSONObject {
     val o = JSONObject()
         .put("folder", folder)
         .put("name", folder)
@@ -37,6 +37,7 @@ private fun parseAbout(folder: String, raw: String): JSONObject {
         .put("supported", JSONArray())
         .put("deps", JSONArray())
         .put("after", JSONArray())
+        .put("before", JSONArray())
     try {
         val xml = raw.trimStart('\uFEFF', ' ', '\t', '\r', '\n')
         val root = DocumentBuilderFactory.newInstance().newDocumentBuilder()
@@ -58,6 +59,7 @@ private fun parseAbout(folder: String, raw: String): JSONObject {
             .put("supported", JSONArray(root.items("supportedVersions")))
             .put("deps", deps)
             .put("after", JSONArray(root.items("loadAfter")))
+            .put("before", JSONArray(root.items("loadBefore")))
     } catch (e: Exception) {
         // Keep the defaults. The row still shows the folder name.
     }
@@ -180,8 +182,10 @@ class ModService : IModService.Stub() {
     override fun setActiveMods(packageIds: Array<String>, backup: Boolean): String {
         val original = runAsText("cat", MODS_CONFIG)
         val existingLudeon = activeIds().filter { it.startsWith("ludeon.", ignoreCase = true) }
-        val ids = (listOf(BASE_PACKAGE) + packageIds.toList() + existingLudeon)
-            .filter { it.isNotBlank() }
+        // The order is kept exactly as the app sent it. Core is added at the top only when it is missing.
+        val wanted = (packageIds.toList() + existingLudeon).filter { it.isNotBlank() }
+        val ids = (if (wanted.any { it.equals(BASE_PACKAGE, ignoreCase = true) }) wanted
+            else listOf(BASE_PACKAGE) + wanted)
             .distinctBy { it.lowercase() }
 
         val block = buildString {
@@ -297,37 +301,69 @@ class ModService : IModService.Stub() {
     }
 
     /**
-     * Imports one zip. Every mod folder inside it is extracted and copied into the Mods folder.
+     * Imports one zip in the background. Reports progress through [listener]:
+     * copying (0-30%), extracting (30-70%), installing each mod (70-100%).
      * Returns one result line per mod (OK, SKIP or FAIL), prefixed by the zip name.
      */
-    override fun importZip(fileName: String, pfd: ParcelFileDescriptor): String {
+    override fun importZip(
+        jobId: String,
+        fileName: String,
+        totalBytes: Long,
+        pfd: ParcelFileDescriptor,
+        listener: IProgressListener?,
+    ): String {
         val zipName = safeName(fileName)
+        fun report(percent: Int, status: String) {
+            runCatching { listener?.onProgress(jobId, percent.coerceIn(0, 100), status) }
+        }
+
         val tmp = stagingFile("_incoming_$zipName")
         tmp.parentFile?.mkdirs()
+        report(0, "Copying")
+        var copied = 0L
         ParcelFileDescriptor.AutoCloseInputStream(pfd).use { input ->
-            tmp.outputStream().use { input.copyTo(it, BUFFER) }
+            tmp.outputStream().use { out ->
+                val buf = ByteArray(256 * 1024)
+                while (true) {
+                    val n = input.read(buf)
+                    if (n < 0) break
+                    out.write(buf, 0, n)
+                    copied += n
+                    if (totalBytes > 0) report((copied * 30 / totalBytes).toInt(), "Copying")
+                }
+            }
         }
+
         val tops = try {
-            extractZip(tmp, zipName.removeSuffix(".zip"))
+            extractZip(tmp, zipName.removeSuffix(".zip")) { done, total ->
+                report(30 + done * 40 / total.coerceAtLeast(1), "Extracting $done of $total files")
+            }
         } finally {
             tmp.delete()
         }
         if (tops.isEmpty()) return "$zipName: no mod folder found in the zip"
-        return "$zipName:\n" + importMods(tops.toTypedArray())
+
+        val lines = mutableListOf<String>()
+        tops.forEachIndexed { i, top ->
+            report(70 + i * 30 / tops.size, "Installing $top")
+            lines += importMods(arrayOf(top)).lines().filter { it.isNotBlank() }
+        }
+        report(100, "Finished")
+        return "$zipName:\n" + lines.joinToString("\n")
     }
 
     /**
      * Extracts a zip into staging and returns the top-level mod folders it contains.
      * A zip whose root holds About/About.xml is a bare mod. It is placed in a folder named after the zip.
      */
-    private fun extractZip(zip: File, baseName: String): List<String> {
+    private fun extractZip(zip: File, baseName: String, onEntry: (Int, Int) -> Unit): List<String> {
         val destPath = STAGING.canonicalPath + File.separator
         val tops = linkedSetOf<String>()
         java.util.zip.ZipFile(zip).use { zf ->
             val entries = java.util.Collections.list(zf.entries())
                 .filter { !it.name.startsWith("__MACOSX") }
             val bare = entries.any { it.name == "About/About.xml" }
-            for (e in entries) {
+            entries.forEachIndexed { index, e ->
                 val rel = if (bare) "$baseName/${e.name}" else e.name
                 val out = File(STAGING, rel)
                 require(out.canonicalPath.startsWith(destPath)) { "bad zip entry: ${e.name}" }
@@ -339,9 +375,39 @@ class ModService : IModService.Stub() {
                     out.parentFile?.mkdirs()
                     zf.getInputStream(e).use { input -> out.outputStream().use { input.copyTo(it, BUFFER) } }
                 }
+                onEntry(index + 1, entries.size)
             }
         }
         return tops.toList()
+    }
+
+    /**
+     * Streams a mod image (About/Preview.png or About/ModIcon.png) back to the app.
+     * File names are matched without case, because mods use "Preview.png" and "preview.png".
+     */
+    override fun openModImage(folderName: String, preview: Boolean): ParcelFileDescriptor? {
+        val name = safeName(folderName)
+        val about = "$MODS/$name/About"
+        val wanted = if (preview) "preview.png" else "modicon.png"
+        val files = runCatching { runAsText("ls", "-1", about) }.getOrNull() ?: return null
+        val file = files.lines().map { it.trim() }.firstOrNull { it.lowercase() == wanted } ?: return null
+
+        val proc = runAs("cat", "$about/$file")
+        val pipe = ParcelFileDescriptor.createPipe()
+        val readEnd = pipe[0]
+        val writeEnd = pipe[1]
+        Thread {
+            try {
+                ParcelFileDescriptor.AutoCloseOutputStream(writeEnd).use { out ->
+                    proc.inputStream.copyTo(out, BUFFER)
+                }
+            } catch (e: Exception) {
+                // The app closed the pipe early. Nothing else to do.
+            } finally {
+                proc.destroy()
+            }
+        }.start()
+        return readEnd
     }
 
     // ---------- files ----------
