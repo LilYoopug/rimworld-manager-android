@@ -33,9 +33,9 @@ jobs:
       - name: Sign and align release APK
         run: |
           keytool -genkey -keystore rimmanager.jks -alias rimmanager -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Kovak,OU=Dev,O=LilYoopug,L=Internet,ST=CA,c=US" -storepass storepass -keypass storepass -sigalg SHA256withRSA
-          zipalign -f 4 app/build/outputs/apk/release/app-release-unsigned.apk app/build/outputs/apk/release/app-release-aligned.apk
-          apksigner sign --ks rimmanager.jks --ks-pass pass:storepass --ks-key-alias rimmanager --key-pass pass:storepass app/build/outputs/apk/release/app-release-aligned.apk
-          apksigner verify app/build/outputs/apk/release/app-release-aligned.apk
+          "${ANDROID_HOME}/build-tools/36.0.0/zipalign" -f 4 app/build/outputs/apk/release/app-release-unsigned.apk app/build/outputs/apk/release/app-release-aligned.apk
+          "${ANDROID_HOME}/build-tools/36.0.0/apksigner" sign --ks rimmanager.jks --ks-pass pass:storepass --ks-key-alias rimmanager --key-pass pass:storepass app/build/outputs/apk/release/app-release-aligned.apk
+          "${ANDROID_HOME}/build-tools/36.0.0/apksigner" verify app/build/outputs/apk/release/app-release-aligned.apk
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
